@@ -1,0 +1,101 @@
+# EduRag local development stack.
+#
+# Usage:
+#   cp backend/.env.example backend/.env  # then fill in your keys
+#   cp frontend/.env.local.example frontend/.env.local  # fill in Supabase
+#   docker-compose up --build
+#
+# Then open:
+#   - Frontend (Next.js):  http://localhost:3000
+#   - Backend (FastAPI):    http://localhost:8000
+#   - API docs (Swagger):   http://localhost:8000/docs
+#   - Redis (port 6379, no UI)
+#
+# All three services share a user-defined bridge network so
+# they can talk to each other by service name (backend, frontend,
+# redis) instead of localhost.
+
+services:
+  # ─────────────────────────────────────────────────────────────────────
+  # FastAPI backend
+  # ─────────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: edurag-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # REDIS_URL points at the redis service on the docker network,
+      # NOT localhost (which would refer to the container itself).
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: info
+    volumes:
+      # Mount the source so edits during dev are picked up.
+      # (For a real production deploy, drop the volume mount.)
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_started
+    networks:
+      - edurag-net
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Next.js frontend
+  # ─────────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Pass public env at build time so the standalone bundle
+        # has them baked in. Real values come from .env.local.
+        - NEXT_PUBLIC_SUPABASE_URL
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY
+    container_name: edurag-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      # Backend URL on the docker network. The Next.js rewrite
+      # /api/backend/* will proxy to this.
+      BACKEND_URL: http://backend:8000
+      PORT: "3000"
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - edurag-net
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Redis (cache + idempotency)
+  # ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: edurag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    # Persistence is off by default for the dev workflow. The
+    # backend has an in-memory fallback so a Redis outage doesn't
+    # break /ask — it just disables response caching.
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    volumes:
+      - redis_data:/data
+    networks:
+      - edurag-net
+
+networks:
+  edurag-net:
+    driver: bridge
+
+volumes:
+  redis_data:
+    # Survives container restarts. Wipe with `docker volume rm
+    # edurag_redis_data`.
