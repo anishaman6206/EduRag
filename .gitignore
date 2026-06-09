@@ -216,3 +216,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude / AI tooling metadata (do not commit)
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.aider*
+.cursor/
+.cody/
+.copilot/
+.windsurf/
+.continue/
+*.claude.md
+.clinerules*
