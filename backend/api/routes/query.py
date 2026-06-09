@@ -40,6 +40,7 @@ from rag.classifier import classify_query, Classification
 from rag.retriever import hybrid_retriever
 from rag.reranker import rerank
 from rag.generator import stream_answer
+from rag.query_refiner import refine_query
 from rag.status import (
     set_status_emitter, get_status_emitter,
     thinking_message, looking_up_message, done_message,
@@ -130,7 +131,9 @@ async def _stream_pipeline(
     thinking = thinking_message(request.query)
     yield f"data: {json.dumps({'type': 'status', 'message': thinking})}\n\n"
 
-    # ── Cache check
+    # ── Cache check (keyed on the ORIGINAL query, not the refined one —
+    # this way a Hinglish question and its English paraphrase hit the
+    # same cache entry when the user repeats themselves)
     cache_key = redis_service.make_cache_key(
         request.query, request.class_level or "", request.subject,
     )
@@ -147,53 +150,50 @@ async def _stream_pipeline(
     except Exception as e:
         logger.warning("Cache get failed (proceeding without cache): %s", e)
 
-    # ── OPTIMIZATION: skip the classifier when the user has already
-    # supplied both subject and class. Synthesize a Classification
-    # from the pre-filter values and skip the gpt-4o-mini LLM call
-    # entirely. Saves 1.5-3s on warm path.
-    #
-    # If only one of the two is supplied, we still need the
-    # classifier to fill in the missing field.
-    # If neither is supplied, we use the classifier to decide
-    # everything.
+    # ── Phase 1: Refine query.
+    # Translate the (possibly Hinglish/Hindi) query into clean English
+    # so the dense retriever can match it against the English NCERT
+    # corpus. Also tag the source language so the answer prompt can
+    # reply in the same register.
     from services.openai_service import get_embedding as _get_embedding
     try:
-        if request.subject and request.class_level:
-            # Fast path: user pre-filtered. Build a "no specific
-            # chapter, but we know the subject+class" classification.
-            classification = Classification(
-                subject=request.subject,
-                class_level=request.class_level,
-                chapter_key=None,  # will search all matching chapters
-                confidence=1.0,
-                chapter_meta=None,
-            )
-            query_vector = await _get_embedding(request.query)
-        else:
-            # Slow path: need the classifier. Run it in parallel
-            # with the embed call.
-            async def _do_classify():
-                return await classify_query(
-                    request.query,
-                    hint_subject=request.subject,
-                    hint_class=request.class_level,
-                )
-            async def _do_embed():
-                return await _get_embedding(request.query)
-            classification, query_vector = await asyncio.gather(
-                _do_classify(), _do_embed()
-            )
+        refined = await refine_query(request.query)
     except Exception as e:
-        logger.exception("Classifier/embed failed: %s", e)
-        yield f"data: {json.dumps({'type': 'error', 'message': 'Could not understand the question. Please try again.'})}\n\n"
+        logger.warning("Refiner failed (using original query): %s", e)
+        refined = None
+
+    search_query = refined.english if refined else request.query
+    source_language = refined.original_language if refined else "english"
+
+    # ── Phase 2: Embed the REFINED (English) query for dense search.
+    # The retriever's own _get_embedding_cached handles per-query
+    # caching, so we just call it via the public path.
+    try:
+        query_vector = await _get_embedding(search_query)
+    except Exception as e:
+        logger.exception("Embed failed: %s", e)
+        yield f"data: {json.dumps({'type': 'error', 'message': 'Could not process the question. Please try again.'})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         set_status_emitter(None)
         return
 
-    # Drain any statuses fired during classification
+    # ── Phase 3: Build a synthetic Classification.
+    # The classifier is currently DISABLED (gated by DISABLE_CLASSIFIER
+    # env var). We synthesize the classification from the user's
+    # pre-filter (if any), or use None which makes the retriever
+    # search all 39 namespaces in parallel.
+    classification = Classification(
+        subject=request.subject,
+        class_level=request.class_level,
+        chapter_key=None,  # always 'no specific chapter' — let the retriever fan out
+        confidence=1.0,
+        chapter_meta=None,
+    )
+
+    # Drain any statuses fired during the above
     for s in await _drain_status():
         yield s
-    # Always fire the 'looking up' message after classification
+    # Always fire the 'looking up' message
     looking = looking_up_message(classification)
     yield f"data: {json.dumps({'type': 'status', 'message': looking})}\n\n"
 
@@ -247,6 +247,7 @@ async def _stream_pipeline(
             request.query,
             chunks,
             classification,
+            source_language=source_language,
         ):
             # Capture the answer as it streams for caching later.
             # 'token' events carry the LLM output.
@@ -394,6 +395,7 @@ async def _stream_pipeline(
             request.query,
             chunks,
             classification,
+            source_language=source_language,
         ):
             # Capture the answer as it streams for caching later.
             # 'token' events carry the LLM output.

@@ -105,6 +105,8 @@ async def stream_answer(
     query: str,
     chunks: list[RetrievedChunk],
     classification: Classification,
+    *,
+    source_language: str = "english",
 ) -> AsyncIterator[str]:
     """
     Yield SSE event strings for the client's ReadableStream reader.
@@ -112,6 +114,10 @@ async def stream_answer(
     The first token arrives in <500ms for gpt-4o-mini. The full
     answer is typically 200-500 tokens (~1-2s). Diagram and source
     events come at the end.
+
+    `source_language` is the language tag the query refiner detected.
+    The answer prompt uses it to reply in the same register — if
+    the student asked in Hinglish, the answer comes back in Hinglish.
     """
     # ── Split chunks: text → LLM context, diagrams → SSE event
     text_chunks = [c for c in chunks if not c.is_diagram]
@@ -131,6 +137,7 @@ async def stream_answer(
         chapter_name=chapter_name,
         context=context,
         user_query=query,
+        source_language=source_language,
     )
 
     # gpt-4o-mini takes a single user message. Combine the query and
