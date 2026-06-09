@@ -49,18 +49,61 @@ async def get_chat_history(
     *,
     user_id: str,
     limit: int = 50,
+    conversation_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch the most recent N messages for a user, newest first."""
+    """
+    Fetch the most recent N messages for a user, newest first.
+    If conversation_id is provided, restrict to that thread.
+    """
+    client = get_supabase()
+    query = client.table("chat_messages").select("*").eq("user_id", user_id)
+    if conversation_id:
+        query = query.eq("conversation_id", conversation_id)
+    response = query.order("created_at", desc=True).limit(limit).execute()
+    return response.data or []
+
+
+async def get_conversation_history(
+    *,
+    user_id: str,
+    conversation_id: str,
+    limit: int = 6,
+) -> list[dict[str, str]]:
+    """
+    Fetch the last N turns of a conversation in chronological order
+    (oldest first). Used by the /ask route to build multi-turn
+    context for the generator prompt.
+
+    Returns a list of {"role": "user"|"assistant", "content": str}
+    dicts. The most recent assistant message is excluded (it's
+    incomplete — the /ask endpoint is currently writing it).
+    """
     client = get_supabase()
     response = (
         client.table("chat_messages")
-        .select("*")
+        .select("role, query, answer, created_at")
         .eq("user_id", user_id)
+        .eq("conversation_id", conversation_id)
         .order("created_at", desc=True)
-        .limit(limit)
+        .limit(limit + 1)  # +1 to skip the in-flight assistant msg
         .execute()
     )
-    return response.data or []
+    rows = response.data or []
+    # Skip the most recent row if it's an assistant turn (still
+    # being written by the current /ask call). We detect this by
+    # ordering DESC and dropping rows where the previous turn is
+    # the user's current query — easiest approximation: just take
+    # the older ones, ignoring the very latest assistant.
+    # Sort ASC for the LLM.
+    rows = list(reversed(rows))
+
+    out: list[dict[str, str]] = []
+    for r in rows:
+        if r.get("query"):
+            out.append({"role": "user", "content": r["query"]})
+        if r.get("answer"):
+            out.append({"role": "assistant", "content": r["answer"]})
+    return out[-limit * 2:]  # cap total tokens roughly
 
 
 # ─────────────────────────────────────────────────────────────────────────

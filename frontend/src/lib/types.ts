@@ -52,6 +52,8 @@ export interface AskRequest {
   class_level?: ClassLevel;
   subject?: Subject;
   user_id?: string;
+  conversation_id?: string;
+  history?: { role: "user" | "assistant"; content: string }[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────

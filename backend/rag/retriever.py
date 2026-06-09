@@ -49,13 +49,15 @@ logger = logging.getLogger(__name__)
 
 # Hard cap on results — keeps latency predictable. Even with
 # 39 namespaces hit in parallel, no more than this many chunks
-# come back to the LLM.
-MAX_RESULT_K = 12
+# come back to the LLM. 6 is the empirical sweet spot — more
+# chunks means more LLM input tokens (slower), fewer chunks
+# means less context for the answer.
+MAX_RESULT_K = 6
 
 # Cosine-similarity floor below which chunks are dropped.
 # 0.5 is generous — NCERT chunks that don't reach it are
 # usually about a different topic.
-RELEVANCE_FLOOR = 0.5
+RELEVANCE_FLOOR = 0.2
 
 # Max diagrams in the final result (the rest is text).
 MAX_DIAGRAMS_IN_RESULT_RATIO = 0.25

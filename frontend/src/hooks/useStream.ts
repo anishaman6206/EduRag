@@ -41,6 +41,20 @@ export function useStream() {
 
       const userId = auth.user?.id || "anonymous";
 
+      // Stable per-tab conversation id (stored in localStorage). Groups
+      // all turns in this browser tab into one conversation thread
+      // so the backend can fetch the prior N turns for multi-turn
+      // context. Surviving page refreshes means a student can
+      // close/reopen the tab and pick up where they left off.
+      let conversationId: string | undefined;
+      if (typeof window !== "undefined") {
+        conversationId = window.localStorage.getItem("edurag:conversation_id") || undefined;
+        if (!conversationId) {
+          conversationId = uuid();
+          window.localStorage.setItem("edurag:conversation_id", conversationId);
+        }
+      }
+
       // 1. Append the user message immediately
       const userMsg: ChatMessage = {
         id: uuid(),
@@ -71,6 +85,7 @@ export function useStream() {
       const body: AskRequest = {
         query,
         user_id: userId,
+        conversation_id: conversationId,
         class_level: filters.class_level as AskRequest["class_level"],
         subject: filters.subject as AskRequest["subject"],
       };

@@ -62,7 +62,16 @@ async def stream_chat(
     user: str,
     max_tokens: int = 2048,
     temperature: float = 0.3,
+    history: list[dict[str, str]] | None = None,
 ) -> AsyncIterator[str]:
+    """
+    Stream text deltas from gpt-4o-mini.
+
+    Optional `history` is a list of {"role": "user"|"assistant",
+    "content": str} dicts for multi-turn conversation. When
+    provided, each entry is inserted between the system message
+    and the current user message in chronological order.
+    """
     """
     Stream text deltas from gpt-4o-mini. Yields raw text fragments
     (not events) so the caller can wrap them in SSE however they like.
@@ -79,6 +88,11 @@ async def stream_chat(
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
+    # Multi-turn history: prior turns between system and the
+    # current user message. Each entry must be {"role": ..., "content": ...}.
+    for h in (history or []):
+        if h.get("role") in ("user", "assistant") and h.get("content"):
+            messages.append({"role": h["role"], "content": h["content"]})
     messages.append({"role": "user", "content": user})
 
     response = await client.chat.completions.create(

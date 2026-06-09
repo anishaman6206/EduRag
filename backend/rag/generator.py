@@ -107,6 +107,7 @@ async def stream_answer(
     classification: Classification,
     *,
     source_language: str = "english",
+    history: list[dict[str, str]] | None = None,
 ) -> AsyncIterator[str]:
     """
     Yield SSE event strings for the client's ReadableStream reader.
@@ -118,6 +119,11 @@ async def stream_answer(
     `source_language` is the language tag the query refiner detected.
     The answer prompt uses it to reply in the same register — if
     the student asked in Hinglish, the answer comes back in Hinglish.
+
+    `history` is a list of prior turns for multi-turn conversation
+    context. Each entry is {"role": "user"|"assistant", "content": str}.
+    The model sees the system prompt, then the history in order,
+    then the current user message — standard OpenAI chat format.
     """
     # ── Split chunks: text → LLM context, diagrams → SSE event
     text_chunks = [c for c in chunks if not c.is_diagram]
@@ -163,6 +169,7 @@ async def stream_answer(
             user=user_message,
             max_tokens=1500,
             temperature=0.3,
+            history=history,
         ):
             token_count += 1
             yield _sse({"type": "token", "content": delta})

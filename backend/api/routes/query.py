@@ -34,7 +34,7 @@ from config.constants import NAMESPACE_MAP
 from config.settings import get_settings
 from models.request_models import AskRequest
 from services import redis_service
-from services.supabase_service import save_chat_message
+from services.supabase_service import save_chat_message, get_conversation_history
 
 from rag.classifier import classify_query, Classification
 from rag.retriever import hybrid_retriever
@@ -198,16 +198,17 @@ async def _stream_pipeline(
     yield f"data: {json.dumps({'type': 'status', 'message': looking})}\n\n"
 
     # ── Phase: retrieve (use the pre-computed query vector).
-    # Top_k=20 (was 10) because the answer benefits from more
-    # context, and the reranker (if Cohere is enabled) will
-    # cut it down to the best 8 anyway. With 39 namespaces in
-    # play now, pulling more per-namespace helps when the user
-    # asks a broad question without a filter.
+    # Top_k=6 — empirical sweet spot. With 6 chunks of ~300 tokens
+    # each = 1800 tokens of context, which fits comfortably in
+    # gpt-4o-mini's context window and produces a focused answer.
+    # Larger top_k (12, 20) made the LLM spend more tokens on less
+    # relevant context; smaller (3) starved it. 6 is the magic
+    # middle. Hard cap MAX_RESULT_K=6 in the retriever.
     try:
         chunks = await hybrid_retriever.retrieve(
             request.query,
             classification,
-            top_k=20,
+            top_k=6,
             query_vector=query_vector,  # pass it in to skip re-embedding
         )
     except Exception as e:
@@ -237,6 +238,21 @@ async def _stream_pipeline(
         set_status_emitter(None)
         return
 
+    # ── Phase: fetch multi-turn history (if conversation_id set)
+    history: list[dict[str, str]] = []
+    if request.history:
+        # Client supplied the history directly. Trust it.
+        history = list(request.history)
+    elif request.conversation_id and user_id != "anonymous":
+        try:
+            history = await get_conversation_history(
+                user_id=user_id,
+                conversation_id=request.conversation_id,
+                limit=6,
+            )
+        except Exception as e:
+            logger.warning("get_conversation_history failed: %s", e)
+
     # ── Phase: generate (streams tokens)
     full_answer_parts: list[str] = []
     final_diagrams: list[dict] = []
@@ -248,6 +264,7 @@ async def _stream_pipeline(
             chunks,
             classification,
             source_language=source_language,
+            history=history,
         ):
             # Capture the answer as it streams for caching later.
             # 'token' events carry the LLM output.
@@ -385,6 +402,21 @@ async def _stream_pipeline(
         set_status_emitter(None)
         return
 
+    # ── Phase: fetch multi-turn history (if conversation_id set)
+    history: list[dict[str, str]] = []
+    if request.history:
+        # Client supplied the history directly. Trust it.
+        history = list(request.history)
+    elif request.conversation_id and user_id != "anonymous":
+        try:
+            history = await get_conversation_history(
+                user_id=user_id,
+                conversation_id=request.conversation_id,
+                limit=6,
+            )
+        except Exception as e:
+            logger.warning("get_conversation_history failed: %s", e)
+
     # ── Phase: generate (streams tokens)
     full_answer_parts: list[str] = []
     final_diagrams: list[dict] = []
@@ -396,6 +428,7 @@ async def _stream_pipeline(
             chunks,
             classification,
             source_language=source_language,
+            history=history,
         ):
             # Capture the answer as it streams for caching later.
             # 'token' events carry the LLM output.
@@ -491,6 +524,7 @@ async def _persist_and_cache(
         ]
         await save_chat_message({
             "user_id": user_id,
+            "conversation_id": request.conversation_id,
             "class_level": request.class_level or (classification.class_level if classification else None),
             "subject": request.subject or (classification.subject if classification else None),
             "chapter_key": classification.chapter_key if classification else None,

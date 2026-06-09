@@ -4,21 +4,26 @@
 -- Idempotent: safe to re-run.
 -- ─────────────────────────────────────────────────────────────────────────
 
--- Chat history: one row per (user, question, answer) exchange
+-- Chat history: one row per (user, conversation, question, answer) exchange
 create table if not exists public.chat_messages (
-    id            uuid primary key default gen_random_uuid(),
-    user_id       text not null,
-    class_level   text,
-    subject       text,
-    chapter_key   text,
-    query         text not null,
-    answer        text not null,
-    sources       jsonb,
-    created_at    timestamptz not null default now()
+    id              uuid primary key default gen_random_uuid(),
+    user_id         text not null,
+    conversation_id text,                                 -- groups turns in one thread
+    class_level     text,
+    subject         text,
+    chapter_key     text,
+    query           text not null,
+    answer          text not null,
+    sources         jsonb,
+    created_at      timestamptz not null default now()
 );
 
 create index if not exists chat_messages_user_id_idx
     on public.chat_messages (user_id, created_at desc);
+
+create index if not exists chat_messages_conversation_id_idx
+    on public.chat_messages (conversation_id, created_at desc)
+    where conversation_id is not null;
 
 
 -- Parent chunks: 1200-token blocks stored in Postgres so the retriever
