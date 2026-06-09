@@ -206,28 +206,82 @@ We build **step by step**, commit after each step, and only then move on.
 | # | Component | Status | Notes |
 |---|---|---|---|
 | 1 | `requirements.txt` + `package.json` | done | pinned versions |
-| 2 | `backend/config/constants.py` | done | 55 chapters, 3 prompts |
+| 2 | `backend/config/constants.py` | done | 22 chapters aligned with the actual NCERT PDFs in `pdfs/Data/`, 3 prompts |
 | 3 | `backend/config/settings.py` | done | OpenAI gpt-4o-mini + DEV_MODE |
 | 4 | `backend/services/` (5 files) | done | openai, pinecone, supabase, redis, cohere |
-| 5 | `backend/rag/` | ⏳ next | classifier, retriever, reranker, generator |
-| 6 | `backend/api/routes/` | ⏳ pending | query (SSE), history, health |
-| 7 | `backend/ingestion/` | ⏳ pending | parser, chunker, diagram_processor, embedder, pipeline |
-| 8 | `frontend/` | ⏳ pending | hooks, components, store, pages |
-| 9 | `docker-compose.yml`, `scripts/`, full README updates | ⏳ pending | |
+| 5 | `backend/rag/` | done | classifier, retriever (hybrid dense + BM25), reranker, generator with status SSE events |
+| 6 | `backend/api/routes/` | done | query (SSE), history, health |
+| 7 | `backend/ingestion/` | done | parser, chunker, diagram_processor, embedder, pipeline with incremental upsert |
+| 8 | `frontend/` | done | hooks, components, store, pages, Supabase Auth (email magic link) |
+| 9 | `docker-compose.yml`, `scripts/`, full README updates | done | all three services wired up |
 
-What works **today**: load `Settings()` from `.env`, call OpenAI for text
-and embeddings, talk to Pinecone + Supabase, use Redis when docker
-brings it up, use Cohere if a key is added.
+What works **today**: full end-to-end RAG pipeline. `POST /ask` streams
+SSE events (status → token → diagrams → sources → done) to the
+Next.js frontend, which renders Markdown + LaTeX + diagram images
+in real time. Supabase stores chat history and parent chunks;
+Pinecone holds the per-chapter vector namespaces. Incremental
+ingest via `scripts/ingest_chapter.py --upload-diagrams` re-uploads
+diagram images and writes the public URLs back into Pinecone metadata.
 
 ---
 
 ## 6. Local setup
 
-### Prerequisites
+### Option A — One-command Docker (recommended)
 
-- **Python 3.11+**
-- **Node 20+** (for the frontend, when we get to step 8)
-- **Docker + Docker Compose** (for Redis and the dev servers)
+```bash
+git clone <repo>
+cd edurag
+cp backend/.env.example backend/.env       # then fill in your keys
+cp frontend/.env.local.example frontend/.env.local   # then fill in Supabase
+docker-compose up --build
+```
+
+That's it. Open:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API docs (Swagger)**: http://localhost:8000/docs
+- **Redis**: localhost:6379
+
+Hot-reload is enabled for the backend (`uvicorn --reload` via the
+volume mount). The frontend uses the production build inside Docker;
+for frontend hot-reload, run it directly on the host (Option B).
+
+### Option B — Run services on the host
+
+For frontend hot-reload (faster iteration on UI code), run the
+backend + redis in Docker but the frontend on your host:
+
+```bash
+# Terminal 1: backend + redis
+docker-compose up backend redis
+
+# Terminal 2: frontend (with hot-reload)
+cd frontend
+cp .env.local.example .env.local     # then fill in
+BACKEND_URL=http://localhost:8000 npm run dev
+# → http://localhost:3000
+```
+
+### Option C — Everything on the host (no Docker)
+
+```bash
+# Backend
+cd backend
+python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\activate on Windows
+pip install -r requirements.txt
+cp .env.example .env                                # then fill in
+# Start redis somehow (Docker, native, brew, etc.) — backend needs REDIS_URL
+uvicorn main:app --reload --port 8000
+
+# Frontend
+cd frontend
+npm install
+cp .env.local.example .env.local                    # then fill in
+BACKEND_URL=http://localhost:8000 npm run dev
+```
+
+### Prerequisites
 - An **OpenAI** account with credits (text + embeddings)
 - A **Pinecone** account (free tier is fine)
 - A **Supabase** project (free tier is fine)
@@ -323,21 +377,28 @@ to start.
 
 ## 8. Ingesting a chapter
 
-> The full ingestion pipeline ships in step 7. This section previews
-> what it will look like.
+The full ingestion pipeline parses NCERT PDFs, chunks them
+semantically, embeds the chunks, and upserts to Pinecone.
+
+### Single chapter
 
 ```bash
-# Single chapter
-python scripts/ingest_chapter.py \
-    --chapter-key physics_9_ch9 \
-    --pdf ./pdfs/class9_science_ch9.pdf
+# Parse + chunk + embed + upsert (no diagram upload)
+PYTHONPATH=backend python scripts/ingest_chapter.py \
+    --chapter-key physics_8_ch4 \
+    --pdf "pdfs/Data/8th Science/hecu104.pdf"
 
-# All 55 chapters
-python scripts/ingest_all.py \
-    --pdf-dir ./pdfs/
+# Same, but also upload diagram images to Supabase Storage
+PYTHONPATH=backend python scripts/ingest_chapter.py \
+    --chapter-key physics_8_ch4 \
+    --pdf "pdfs/Data/8th Science/hecu104.pdf" \
+    --upload-diagrams
 
-# Just a dry-run validation
-python scripts/ingest_chapter.py --chapter-key physics_9_ch9 --pdf <path> --dry-run
+# Dry-run (parse + chunk only, no embeddings or upserts)
+PYTHONPATH=backend python scripts/ingest_chapter.py \
+    --chapter-key physics_8_ch4 \
+    --pdf "pdfs/Data/8th Science/hecu104.pdf" \
+    --dry-run
 ```
 
 The CLI:
@@ -346,13 +407,47 @@ The CLI:
 2. Parses the PDF (text + embedded images).
 3. Chunks semantically into parent (~1200 tok) and child (~300 tok).
 4. Embeds children and upserts to the chapter's Pinecone namespace.
-5. Stores parents in Supabase.
-6. For each detected diagram: runs vision analysis, embeds the description, and uploads the image to Supabase Storage.
-7. Prints a summary: `chunks_created`, `diagrams_processed`, `vectors_upserted`.
+5. Stores parents in Supabase (Postgres).
+6. With `--upload-diagrams`: uploads each diagram image to
+   Supabase Storage and writes the public URL into the chunk's
+   Pinecone metadata so the frontend can render `<img>` tags.
+7. Prints a summary: parents, children, diagrams, vectors upserted.
 
-**Re-ingesting a chapter is idempotent** — chunk IDs are deterministic
-(`{chapter_key}_{chunk_index}_{content_hash[:8]}`), so re-runs overwrite
-rather than duplicate.
+### All chapters at once
+
+```bash
+# Plan only (no actual ingest)
+PYTHONPATH=backend python scripts/ingest_all.py --dry-run
+
+# Ingest every chapter in NAMESPACE_MAP
+PYTHONPATH=backend python scripts/ingest_all.py
+
+# Ingest a subset
+PYTHONPATH=backend python scripts/ingest_all.py --class-filter 8
+PYTHONPATH=backend python scripts/ingest_all.py --subject-filter physics
+PYTHONPATH=backend python scripts/ingest_all.py --upload-diagrams
+```
+
+Expected time for the full 22-chapter ingest:
+
+- Without `--upload-diagrams`: **~10-15 minutes**
+- With `--upload-diagrams`: **~15-25 minutes**
+
+Cost: ~$0.03 in OpenAI embeddings (no LLM is called at ingest time).
+
+### Idempotency
+
+**Re-ingesting a chapter is safe.** Each chunk has a deterministic ID
+(`{chapter_key}_{idx}_{parent_content_hash[:8]}`) and a `version_hash`
+of its content. On re-run:
+
+- Chunks with the same content are **skipped** (no work, no API calls).
+- Chunks with new/changed content are **upserted** (new embeddings).
+- Chunks that no longer exist (e.g. after a chunker change) are **deleted**.
+- Parents are upserted in Postgres via `on_conflict=id`.
+- Diagrams re-upload with the new `version_hash` if you pass
+  `--upload-diagrams` (the public URL is treated as part of the
+  diagram's content for hash purposes).
 
 ---
 
@@ -580,17 +675,24 @@ After streaming completes, the backend:
 ### Streaming pipeline (end-to-end)
 
 ```
-Browser  ──fetch()──▶  FastAPI  ──sse──▶  classifier
-                              ──sse──▶  retriever
-                              ──sse──▶  reranker (optional)
+Browser  ──fetch()──▶  FastAPI  ──parallel──▶  classifier (gpt-4o-mini)
+                              ──parallel──▶  embed query (text-embedding-3-small)
+                              ──sse──▶  status: "Looking in Class 8 Science, Ch 4…"
+                              ──sse──▶  retriever (Pinecone + BM25, RRF)
+                              ──sse──▶  status: "Finding the most relevant sections…"
+                              ──sse──▶  reranker (optional, Cohere)
+                              ──sse──▶  status: "Reading through and writing your answer…"
                               ──sse──▶  generator (streams tokens)
                               ──sse──▶  diagram + sources events
                               ──sse──▶  done
 ```
 
-Each phase is fast (most <500ms except generation). The user sees
-tokens appear as the model thinks, so perceived latency is just the
-first token (~400ms for gpt-4o-mini).
+**Measured latency** (Class 8 chapter 4, on a small 59-vector namespace):
+- Cold (first request after idle): 5-10s time-to-first-token (Pinecone
+  serverless cold start dominates)
+- Warm: 3-3.5s time-to-first-token
+- Full stream for a typical 200-token answer: 7-9s wall-clock (but the
+  user sees tokens as they arrive, so perceived latency is the TTFT)
 
 ---
 
@@ -700,53 +802,61 @@ And to switch: `DEV_MODE=false` in `.env`. No code changes needed.
 - **No vision yet.** Diagram detection works at the PDF level (PyMuPDF
   finds embedded images), but the LLM description step is not
   implemented. The retriever can find diagram descriptions once they
-  exist in Pinecone.
+  exist in Pinecone. The `diagram_processor.py` module has a clear
+  seam where a `gpt-4o` (or similar) vision call can be inserted
+  without changing the rest of the pipeline.
 - **BM25 corpus is in-memory.** A re-deploy of the backend rebuilds
-  the BM25 index for every namespace on first use. For 55 chapters
+  the BM25 index for every namespace on first use. For 22 chapters
   this is fine, but if chapters get much larger, swap to a persistent
   sparse index (e.g. Pinecone's `sparse-dense` indexes).
 - **No streaming cancellation.** If the browser closes the connection
   mid-stream, the backend keeps running the LLM call to completion.
   A future improvement: hook `request.is_disconnected()` into the
-  generator's loop.
+  generator's loop. (The frontend has a Stop button, but it only
+  works before the LLM call starts.)
 - **No multi-turn memory.** The /ask endpoint is stateless apart from
   the chat-history record. A follow-up question ("can you explain
-  step 2?") gets no context from the previous turn. Step 6 will add
-  `conversation_id` to the request and pre-pend recent history to the
-  generator prompt.
-- **No user auth.** `user_id` is a free-form string for now. Auth
-  (likely Supabase Auth) is on the roadmap.
+  step 2?") gets no context from the previous turn.
+- **Auth is email-only by default.** Google OAuth works once you
+  configure it in the Supabase dashboard, but the frontend hides the
+  Google button until then.
 - **Single-region.** Pinecone is on `us-east-1`. Indian students will
   see ~200ms additional network latency. Can switch region if needed.
 - **CORS is wide-open in dev.** Tighten before production.
+- **No diagrams-storage pre-upload.** The `pdfs/` directory isn't
+  volume-mounted into the backend container by default, so the
+  `--upload-diagrams` ingest mode requires running the script
+  outside the container (against the live Supabase + Pinecone).
 
 ---
 
 ## 14. Roadmap
 
-Steps 1-4 done. Next: step 5 (`backend/rag/`).
+**All 9 build steps done.** MVP is feature-complete for the
+core RAG loop. Future work is below.
 
 - [x] **Step 1**: `requirements.txt` + `package.json`
 - [x] **Step 2**: `backend/config/constants.py` (NAMESPACE_MAP + prompts)
 - [x] **Step 3**: `backend/config/settings.py` (OpenAI gpt-4o-mini)
 - [x] **Step 4**: `backend/services/` (5 client wrappers)
-- [ ] **Step 5**: `backend/rag/` (classifier, retriever, reranker, generator)
-- [ ] **Step 6**: `backend/api/routes/` (query SSE, history, health)
-- [ ] **Step 7**: `backend/ingestion/` (parser, chunker, diagram processor, embedder, pipeline)
-- [ ] **Step 8**: `frontend/` (hooks, components, store, pages)
-- [ ] **Step 9**: `docker-compose.yml` + `scripts/` + `Dockerfile` + README polish
+- [x] **Step 5**: `backend/rag/` (classifier, retriever, reranker, generator with status SSE events)
+- [x] **Step 6**: `backend/api/routes/` (query SSE, history, health)
+- [x] **Step 7**: `backend/ingestion/` (parser, chunker, diagram processor, embedder, pipeline with incremental upsert)
+- [x] **Step 8**: `frontend/` (Next.js 14, hooks, components, store, pages, Supabase Auth)
+- [x] **Step 9**: `docker-compose.yml` + `scripts/` (ingest_chapter.py, ingest_all.py) + `Dockerfile` (backend + frontend) + README polish
 
 ### Future (after step 9)
 
-- [ ] **Vision implementation** — `gpt-4o` vision calls in `diagram_processor.py`
+- [ ] **Vision implementation** — `gpt-4o` vision calls in `diagram_processor.py` (~$0.15-0.25 for full 22-chapter ingest, see §11 for cost analysis)
 - [ ] **Multi-turn conversations** — `conversation_id` + recent history prepended to the prompt
-- [ ] **User auth** — Supabase Auth (email + Google)
+- [ ] **User auth** — Supabase Auth (email magic link ✅ done, Google OAuth is a 10-min setup)
 - [ ] **Streaming cancellation** — `request.is_disconnected()` plumbing
 - [ ] **Persistent sparse index** — Pinecone sparse-dense, or Qdrant
 - [ ] **Evaluation harness** — RAGAS or custom metrics on a held-out NCERT QA set
 - [ ] **Hindi + regional language support** — translation layer before generation
 - [ ] **Mobile-responsive UI** — Tailwind breakpoints, KaTeX sizing
 - [ ] **Rate limiting + abuse prevention** — per-user_id quota, Cloudflare Turnstile
+- [ ] **Skip the classifier when pre-filter is set** — saves another 1.5-3s on warm path (currently the biggest remaining fixed cost)
 - [ ] **Observability** — OpenTelemetry traces, structured logs to a dashboard
 
 ---
