@@ -7,6 +7,11 @@
  *  - Subscribes to onAuthStateChange so sign-in / sign-out from
  *    any tab updates the UI here.
  *  - Exposes signInWithEmail, signInWithGoogle, signOut helpers.
+ *
+ * Google OAuth is enabled by default — the project owner has
+ * configured the Google provider in the Supabase dashboard. If
+ * you ever need to disable it without redeploying, set
+ * NEXT_PUBLIC_GOOGLE_AUTH_ENABLED=false in your env.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -17,7 +22,11 @@ import { AuthContext, type AuthContextValue } from "@/hooks/useAuth";
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [googleEnabled, setGoogleEnabled] = useState(false);
+
+  // Google OAuth is always available — the user has configured it
+  // in their Supabase dashboard. To disable without a redeploy,
+  // set NEXT_PUBLIC_GOOGLE_AUTH_ENABLED=false in your env.
+  const googleEnabled = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED !== "false";
 
   useEffect(() => {
     let mounted = true;
@@ -35,32 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })();
 
-    // 1b. Probe whether Google is enabled. We try signInWithOAuth and
-    // catch the "provider is not enabled" error. If we get it, we hide
-    // the Google button in the login page so users don't see a
-    // broken button. Any other error is treated as "enabled" (the
-    // real error will surface when the user actually clicks).
-    (async () => {
-      try {
-        const { error } = await getBrowserSupabase().auth.signInWithOAuth({
-          provider: "google",
-          options: { skipBrowserRedirect: true } as any,
-        });
-        // Most likely: error message about needing a session —
-        // that's OK, Google IS enabled, we just can't actually sign in
-        // without going through the OAuth flow. Only treat
-        // "provider is not enabled" as disabled.
-        if (error && /provider is not enabled/i.test(error.message)) {
-          if (mounted) setGoogleEnabled(false);
-        } else {
-          if (mounted) setGoogleEnabled(true);
-        }
-      } catch {
-        if (mounted) setGoogleEnabled(false);
-      }
-    })();
-
-    // 2. Subscribe to changes
+    // 2. Subscribe to changes (sign-in, sign-out, token refresh)
     const { data: sub } = getBrowserSupabase().auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
