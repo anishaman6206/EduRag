@@ -14,6 +14,7 @@ import type { User } from "@supabase/supabase-js";
 export interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  googleEnabled: boolean;          // false if Supabase returns "provider not enabled"
   signInWithEmail: (email: string) => Promise<{ error: string | null }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -22,6 +23,7 @@ export interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
+  googleEnabled: false,
   signInWithEmail: async () => ({ error: "AuthProvider not mounted" }),
   signInWithGoogle: async () => ({ error: "AuthProvider not mounted" }),
   signOut: async () => {},

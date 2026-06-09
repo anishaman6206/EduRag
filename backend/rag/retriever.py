@@ -303,6 +303,7 @@ class HybridRetriever:
         *,
         top_k: int = RETRIEVAL_TOP_K,
         filter: dict[str, Any] | None = None,
+        query_vector: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Hybrid (dense + sparse) retrieval with RRF fusion.
@@ -314,6 +315,11 @@ class HybridRetriever:
                    before fusion so fusion can find a good top_k.
             filter: Optional Pinecone metadata filter
                     (e.g. {"content_type": {"$in": ["text", "formula"]}}).
+            query_vector: Optional pre-computed query embedding. If
+                         provided, the retriever skips its own
+                         embed() call — useful when the route
+                         handler has already embedded the query
+                         for the classifier.
 
         Returns:
             list of RetrievedChunk, fused and ranked, length <= top_k.
@@ -334,8 +340,10 @@ class HybridRetriever:
         if not namespaces:
             return []
 
-        # 1. Embed the query once for the dense side
-        query_vector = await get_embedding(query)
+        # 1. Embed the query once for the dense side (or use the
+        #    pre-computed vector if the caller already has one).
+        if query_vector is None:
+            query_vector = await get_embedding(query)
 
         # 2. Run dense + sparse in parallel across all resolved namespaces
         per_ns_topk = max(5, math.ceil(top_k / len(namespaces)) + 2)

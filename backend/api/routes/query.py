@@ -137,6 +137,163 @@ async def _stream_pipeline(
         cached = await redis_service.cache_get(cache_key)
         if cached:
             logger.info("Cache hit for %s", cache_key)
+            for s in await _drain_status():
+                yield s
+            async for event in _replay_cached(cached):
+                yield event
+            set_status_emitter(None)
+            return
+    except Exception as e:
+        logger.warning("Cache get failed (proceeding without cache): %s", e)
+
+    # ── OPTIMIZATION: classify + embed in parallel.
+    # These two are independent — the classifier returns routing
+    # metadata, the embed call returns a vector. Both go to OpenAI.
+    # Running them in parallel cuts ~1-2s off the cold path.
+    async def _do_classify():
+        return await classify_query(
+            request.query,
+            hint_subject=request.subject,
+            hint_class=request.class_level,
+        )
+    from services.openai_service import get_embedding as _get_embedding
+    async def _do_embed():
+        return await _get_embedding(request.query)
+    try:
+        classification, query_vector = await asyncio.gather(
+            _do_classify(), _do_embed()
+        )
+    except Exception as e:
+        logger.exception("Classifier/embed failed: %s", e)
+        yield f"data: {json.dumps({'type': 'error', 'message': 'Could not understand the question. Please try again.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        set_status_emitter(None)
+        return
+
+    # Drain any statuses fired during classification
+    for s in await _drain_status():
+        yield s
+    # Always fire the 'looking up' message after classification
+    looking = looking_up_message(classification)
+    yield f"data: {json.dumps({'type': 'status', 'message': looking})}\n\n"
+
+    # ── Phase: retrieve (use the pre-computed query vector)
+    try:
+        chunks = await hybrid_retriever.retrieve(
+            request.query,
+            classification,
+            top_k=10,
+            query_vector=query_vector,  # pass it in to skip re-embedding
+        )
+    except Exception as e:
+        logger.exception("Retriever failed: %s", e)
+        yield f"data: {json.dumps({'type': 'error', 'message': 'Search failed. Please try again.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        set_status_emitter(None)
+        return
+
+    # ── Phase: rerank (optional)
+    s = get_settings()
+    if s.has_cohere and chunks:
+        try:
+            chunks = await rerank(request.query, chunks, top_n=8)
+        except Exception as e:
+            logger.warning("Rerank failed (using retriever order): %s", e)
+
+    # Drain any pending statuses
+    for s in await _drain_status():
+        yield s
+
+    if not chunks:
+        # No relevant content found. Don't call the LLM with empty
+        # context — give the student a clear, honest response.
+        yield f"data: {json.dumps({'type': 'token', 'content': 'I could not find this in your textbook. Could you rephrase the question, or specify which chapter it belongs to?'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        set_status_emitter(None)
+        return
+
+    # ── Phase: generate (streams tokens)
+    full_answer_parts: list[str] = []
+    final_diagrams: list[dict] = []
+    final_sources: list[dict] = []
+
+    try:
+        async for sse_event in stream_answer(
+            request.query,
+            chunks,
+            classification,
+        ):
+            # Capture the answer as it streams for caching later.
+            # 'token' events carry the LLM output.
+            if '"type": "token"' in sse_event:
+                try:
+                    payload = json.loads(sse_event[6:].strip())
+                    if payload.get("type") == "token":
+                        full_answer_parts.append(payload.get("content", ""))
+                except Exception:
+                    pass
+            elif '"type": "diagrams"' in sse_event:
+                try:
+                    payload = json.loads(sse_event[6:].strip())
+                    final_diagrams = payload.get("data", [])
+                except Exception:
+                    pass
+            elif '"type": "sources"' in sse_event:
+                try:
+                    payload = json.loads(sse_event[6:].strip())
+                    final_sources = payload.get("data", [])
+                except Exception:
+                    pass
+            yield sse_event
+    except Exception as e:
+        logger.exception("Generator failed: %s", e)
+        yield f"data: {json.dumps({'type': 'error', 'message': 'Answer generation failed. Please try again.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        set_status_emitter(None)
+        return
+
+    set_status_emitter(None)
+    logger.info(
+        "/ask: query=%r → %d tokens, %d diagrams, %d sources, %.2fs",
+        request.query[:60],
+        sum(len(p) for p in full_answer_parts),
+        len(final_diagrams), len(final_sources),
+        time.monotonic() - t0,
+    )
+
+    # ── Cache + persist (background — don't block the response close)
+    full_answer = "".join(full_answer_parts)
+    asyncio.create_task(_persist_and_cache(
+        user_id=user_id,
+        request=request,
+        classification=classification,
+        chunks=chunks,
+        full_answer=full_answer,
+        diagrams=final_diagrams,
+        sources=final_sources,
+        cache_key=cache_key,
+    ))
+
+    # Helper: drain any pending status events, yielding them as SSE
+    async def _drain_status() -> list[str]:
+        out: list[str] = []
+        while not status_queue.empty():
+            payload = status_queue.get_nowait()
+            out.append(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n")
+        return out
+
+    # ── Phase: think (no work yet, just acknowledge the user)
+    thinking = thinking_message(request.query)
+    yield f"data: {json.dumps({'type': 'status', 'message': thinking})}\n\n"
+
+    # ── Cache check
+    cache_key = redis_service.make_cache_key(
+        request.query, request.class_level or "", request.subject,
+    )
+    try:
+        cached = await redis_service.cache_get(cache_key)
+        if cached:
+            logger.info("Cache hit for %s", cache_key)
             # Drain any pending statuses first
             for s in await _drain_status():
                 yield s

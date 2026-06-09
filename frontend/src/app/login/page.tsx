@@ -31,7 +31,7 @@ function LoginSkeleton() {
 }
 
 function LoginForm() {
-  const { signInWithEmail, signInWithGoogle } = useAuth();
+  const { signInWithEmail, signInWithGoogle, googleEnabled } = useAuth();
   const router = useRouter();
   const search = useSearchParams();
   const next = search.get("next") || "/chat";
@@ -69,13 +69,15 @@ function LoginForm() {
           Your chat history is saved to your account.
         </p>
 
-        <button
-          onClick={handleGoogle}
-          className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
-        >
-          <GoogleIcon />
-          Continue with Google
-        </button>
+        {googleEnabled && (
+          <button
+            onClick={handleGoogle}
+            className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+          >
+            <GoogleIcon />
+            Continue with Google
+          </button>
+        )}
 
         <div className="flex items-center gap-3 my-6">
           <div className="flex-1 h-px bg-gray-200" />

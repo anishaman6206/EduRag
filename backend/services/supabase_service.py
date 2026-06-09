@@ -69,8 +69,17 @@ async def get_chat_history(
 #                  token_count (int), metadata (jsonb), created_at
 # ─────────────────────────────────────────────────────────────────────────
 async def save_parent_chunk(record: dict[str, Any]) -> dict[str, Any]:
+    """
+    Upsert a parent chunk by id. On re-ingest the same parent will
+    have the same id (content hash is deterministic) and we just
+    overwrite. Avoids the 'duplicate key' error from a plain insert.
+    """
     client = get_supabase()
-    response = client.table("parent_chunks").insert(record).execute()
+    response = (
+        client.table("parent_chunks")
+        .upsert(record, on_conflict="id")
+        .execute()
+    )
     return response.data[0] if response.data else {}
 
 

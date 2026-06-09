@@ -209,9 +209,14 @@ async def process_diagram(
     )
 
     chunk_id = f"{chapter_key}_d_{candidate.page_number}_{image_hash}"
-    # version_hash of the *description* text (what we embed). Changes
-    # when the surrounding-page text changes between ingests.
-    version_hash = hashlib.sha256(description.encode("utf-8")).hexdigest()[:8]
+    # version_hash of (description + storage_path). Changes when EITHER
+    # the surrounding-page text changes OR the storage path changes
+    # (which happens the first time we upload — version_hash will
+    # differ from the previous run, so the diff marks the chunk as
+    # updated and the new public_url gets written back to metadata).
+    version_hash = hashlib.sha256(
+        (description + storage_path).encode("utf-8")
+    ).hexdigest()[:8]
 
     return DiagramResult(
         chunk_id=chunk_id,
