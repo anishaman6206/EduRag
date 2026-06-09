@@ -45,10 +45,20 @@ logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────
 # Thresholds — tuned to NCERT PDFs
+#
+# Real NCERT pages have:
+#   - Page header / footer logos (~1-3 KB)            → drop
+#   - Decorative dividers, bullet icons (~2-5 KB)     → drop
+#   - Inline activity images (~5-15 KB)               → drop (not a "diagram")
+#   - Actual textbook figures (15 KB - 2 MB)          → KEEP
+#
+# We additionally cap how many diagrams we keep per page to
+# avoid the "same figure rendered at multiple resolutions"
+# problem common in PDF extraction.
 # ─────────────────────────────────────────────────────────────────────────
-MIN_IMAGE_BYTES = 4_000          # below this is almost always an icon
-MIN_IMAGE_DIM = 80               # below this is too tiny to be useful
+MIN_IMAGE_BYTES = 15_000         # below this is almost always an icon/divider
 MAX_IMAGE_BYTES = 8_000_000      # above this is probably a full-page photo
+MAX_DIAGRAMS_PER_PAGE = 4        # if more, keep the largest N (decoration noise)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -86,10 +96,30 @@ def _looks_meaningful(candidate: DiagramCandidate) -> bool:
     size = len(candidate.image_bytes)
     if size < MIN_IMAGE_BYTES or size > MAX_IMAGE_BYTES:
         return False
-    # We don't have width/height in the candidate directly; the
-    # byte-size filter is good enough for now. Add dimension check
-    # when we wire up the image library.
     return True
+
+
+def dedupe_per_page(results: list[DiagramResult]) -> list[DiagramResult]:
+    """
+    Public helper: after filtering, if a single page has many
+    "diagrams" (often the same image rendered at multiple sizes,
+    or 5 small activity icons), keep only the largest N per page.
+
+    Caller (the pipeline) invokes this once after collecting all
+    DiagramResult objects from process_diagram.
+    """
+    by_page: dict[int, list[DiagramResult]] = {}
+    for r in results:
+        by_page.setdefault(r.page, []).append(r)
+
+    kept: list[DiagramResult] = []
+    for page, items in by_page.items():
+        if len(items) <= MAX_DIAGRAMS_PER_PAGE:
+            kept.extend(items)
+        else:
+            items_sorted = sorted(items, key=lambda r: len(r.image_bytes), reverse=True)
+            kept.extend(items_sorted[:MAX_DIAGRAMS_PER_PAGE])
+    return kept
 
 
 # ─────────────────────────────────────────────────────────────────────────

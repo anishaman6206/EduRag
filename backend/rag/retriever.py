@@ -365,11 +365,38 @@ class HybridRetriever:
         # 4. Fuse with RRF
         fused = _rrf_fuse(all_dense, all_sparse)
 
-        # 5. Trim
-        result = fused[:top_k]
+        # 5. Balance text vs diagram chunks.
+        # Diagram chunks dominate the index (we keep all of them per
+        # chapter), so a pure top-K cut returns diagrams only. We
+        # reserve a slot for diagrams and fill the rest with text/
+        # formula/definition/example chunks.
+        MAX_DIAGRAMS_IN_RESULT = max(1, top_k // 4)   # ~25% of results are diagrams
+
+        text_chunks = [c for c in fused if not c.is_diagram]
+        diagram_chunks = [c for c in fused if c.is_diagram]
+
+        result: list[RetrievedChunk] = []
+        result.extend(text_chunks[: top_k - MAX_DIAGRAMS_IN_RESULT])
+        result.extend(diagram_chunks[:MAX_DIAGRAMS_IN_RESULT])
+
+        # If we still have room, fill from whichever pool has more
+        remaining_room = top_k - len(result)
+        if remaining_room > 0:
+            used_ids = {c.id for c in result}
+            for c in fused:
+                if remaining_room == 0:
+                    break
+                if c.id not in used_ids:
+                    result.append(c)
+                    used_ids.add(c.id)
+                    remaining_room -= 1
+
         logger.info(
-            "Retrieved %d chunks (dense=%d, sparse=%d, namespaces=%d) for query=%r",
-            len(result), len(all_dense), len(all_sparse), len(namespaces),
+            "Retrieved %d chunks (text=%d, diagram=%d; dense=%d, sparse=%d, namespaces=%d) for query=%r",
+            len(result),
+            sum(1 for c in result if not c.is_diagram),
+            sum(1 for c in result if c.is_diagram),
+            len(all_dense), len(all_sparse), len(namespaces),
             query[:80],
         )
         return result

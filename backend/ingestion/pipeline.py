@@ -37,7 +37,7 @@ from services.supabase_service import save_parent_chunk, upload_diagram
 from ingestion.pdf_parser import parse_pdf
 from ingestion.chunker import create_chunks, ChildChunk, ParentChunk
 from ingestion.embedder import embed_texts
-from ingestion.diagram_processor import process_diagram, DiagramResult
+from ingestion.diagram_processor import process_diagram, dedupe_per_page, DiagramResult
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,13 @@ async def run_ingestion(
         )
         if result is not None:
             diagram_results.append(result)
-    logger.info("       %d diagram chunks kept out of %d candidates",
+
+    # Dedup: if a single page produced many "diagrams" (often the same
+    # image at multiple resolutions, or 5 small activity icons), keep
+    # only the largest N per page.
+    diagram_results = dedupe_per_page(diagram_results)
+
+    logger.info("       %d diagram chunks kept out of %d candidates (after per-page dedup)",
                 len(diagram_results), len(parsed.diagrams))
 
     diagram_descriptions = [r.description for r in diagram_results]
