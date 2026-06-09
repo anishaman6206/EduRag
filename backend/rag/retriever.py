@@ -195,6 +195,13 @@ def _resolve_namespaces(classification: Classification) -> list[tuple[str, str]]
     Return [(namespace, chapter_key), ...] to search. Ordering matters
     when no specific chapter is known — we use the same chapter order
     as NAMESPACE_MAP for determinism.
+
+    Strategies:
+    1. Chapter is fully resolved → just that one namespace.
+    2. Subject + class known → all chapters of that pair.
+    3. Subject only → all chapters of that subject (across classes).
+    4. Class only → all chapters of that class (across subjects).
+    5. Nothing known → all 39 namespaces (parallel).
     """
     if classification.is_fully_resolved:
         meta = classification.chapter_meta
@@ -208,7 +215,21 @@ def _resolve_namespaces(classification: Classification) -> list[tuple[str, str]]
             and NAMESPACE_MAP[k]["class_level"] == classification.class_level
         ]
 
-    # Last resort: search everything
+    if classification.subject:
+        return [
+            (NAMESPACE_MAP[k]["namespace"], k)
+            for k in NAMESPACE_MAP
+            if NAMESPACE_MAP[k]["subject"] == classification.subject
+        ]
+
+    if classification.class_level:
+        return [
+            (NAMESPACE_MAP[k]["namespace"], k)
+            for k in NAMESPACE_MAP
+            if NAMESPACE_MAP[k]["class_level"] == classification.class_level
+        ]
+
+    # Last resort: search everything (all 39 namespaces, in parallel)
     return [(v["namespace"], k) for k, v in NAMESPACE_MAP.items()]
 
 

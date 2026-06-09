@@ -43,9 +43,9 @@ export function SubjectClassFilter({ classLevel, subject, onChange, disabled }: 
         className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
       >
         <option value="all">All subjects</option>
-        <option value="math">Math</option>
         <option value="physics">Physics</option>
         <option value="chemistry">Chemistry</option>
+        <option value="biology">Biology</option>
       </select>
     </div>
   );

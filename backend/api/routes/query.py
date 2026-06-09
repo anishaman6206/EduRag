@@ -30,12 +30,13 @@ from typing import AsyncIterator
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from config.constants import NAMESPACE_MAP
 from config.settings import get_settings
 from models.request_models import AskRequest
 from services import redis_service
 from services.supabase_service import save_chat_message
 
-from rag.classifier import classify_query
+from rag.classifier import classify_query, Classification
 from rag.retriever import hybrid_retriever
 from rag.reranker import rerank
 from rag.generator import stream_answer
@@ -146,23 +147,42 @@ async def _stream_pipeline(
     except Exception as e:
         logger.warning("Cache get failed (proceeding without cache): %s", e)
 
-    # ── OPTIMIZATION: classify + embed in parallel.
-    # These two are independent — the classifier returns routing
-    # metadata, the embed call returns a vector. Both go to OpenAI.
-    # Running them in parallel cuts ~1-2s off the cold path.
-    async def _do_classify():
-        return await classify_query(
-            request.query,
-            hint_subject=request.subject,
-            hint_class=request.class_level,
-        )
+    # ── OPTIMIZATION: skip the classifier when the user has already
+    # supplied both subject and class. Synthesize a Classification
+    # from the pre-filter values and skip the gpt-4o-mini LLM call
+    # entirely. Saves 1.5-3s on warm path.
+    #
+    # If only one of the two is supplied, we still need the
+    # classifier to fill in the missing field.
+    # If neither is supplied, we use the classifier to decide
+    # everything.
     from services.openai_service import get_embedding as _get_embedding
-    async def _do_embed():
-        return await _get_embedding(request.query)
     try:
-        classification, query_vector = await asyncio.gather(
-            _do_classify(), _do_embed()
-        )
+        if request.subject and request.class_level:
+            # Fast path: user pre-filtered. Build a "no specific
+            # chapter, but we know the subject+class" classification.
+            classification = Classification(
+                subject=request.subject,
+                class_level=request.class_level,
+                chapter_key=None,  # will search all matching chapters
+                confidence=1.0,
+                chapter_meta=None,
+            )
+            query_vector = await _get_embedding(request.query)
+        else:
+            # Slow path: need the classifier. Run it in parallel
+            # with the embed call.
+            async def _do_classify():
+                return await classify_query(
+                    request.query,
+                    hint_subject=request.subject,
+                    hint_class=request.class_level,
+                )
+            async def _do_embed():
+                return await _get_embedding(request.query)
+            classification, query_vector = await asyncio.gather(
+                _do_classify(), _do_embed()
+            )
     except Exception as e:
         logger.exception("Classifier/embed failed: %s", e)
         yield f"data: {json.dumps({'type': 'error', 'message': 'Could not understand the question. Please try again.'})}\n\n"
@@ -177,12 +197,17 @@ async def _stream_pipeline(
     looking = looking_up_message(classification)
     yield f"data: {json.dumps({'type': 'status', 'message': looking})}\n\n"
 
-    # ── Phase: retrieve (use the pre-computed query vector)
+    # ── Phase: retrieve (use the pre-computed query vector).
+    # Top_k=20 (was 10) because the answer benefits from more
+    # context, and the reranker (if Cohere is enabled) will
+    # cut it down to the best 8 anyway. With 39 namespaces in
+    # play now, pulling more per-namespace helps when the user
+    # asks a broad question without a filter.
     try:
         chunks = await hybrid_retriever.retrieve(
             request.query,
             classification,
-            top_k=10,
+            top_k=20,
             query_vector=query_vector,  # pass it in to skip re-embedding
         )
     except Exception as e:

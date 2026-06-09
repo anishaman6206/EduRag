@@ -25,9 +25,11 @@ class ChapterMeta(TypedDict):
 
 NAMESPACE_MAP: dict[str, ChapterMeta] = {
     # ─────────────────────────────────────────
-    # NOTE: This map only contains chapters for which we have actual
-    # NCERT PDFs in pdfs/Data/. Each chapter_key is `{subject}_{class}_chN`
-    # and matches the chapter number in the corresponding PDF file.
+    # NOTE: This map covers ALL 39 chapters in pdfs/Data/ — PCM
+    # (physics + chemistry) plus biology, since the books are
+    # integrated Science (not split PCM). Each chapter_key is
+    # `{subject}_{class}_chN` and matches the chapter number in
+    # the corresponding PDF file.
     #
     # File → chapter mapping (see pdfs/Data/):
     #   8th Science/hecu1NN.pdf  → 8th class chapters
@@ -40,7 +42,7 @@ NAMESPACE_MAP: dict[str, ChapterMeta] = {
     # ─────────────────────────────────────────
 
     # ─────────────────────────────────────────
-    # CLASS 8  (hecu1NN.pdf — integrated Science, PCM chapters)
+    # CLASS 8  (hecu1NN.pdf — 13 chapters)
     # ─────────────────────────────────────────
     # CLASS 8 PHYSICS
     "physics_8_ch4":  {"namespace": "physics_8_ch4_electricity_magnetic_heating", "display_name": "Electricity: Magnetic and Heating Effects", "class_level": "8", "subject": "physics", "chapter_number": 4},
@@ -53,8 +55,16 @@ NAMESPACE_MAP: dict[str, ChapterMeta] = {
     "chemistry_8_ch8": {"namespace": "chemistry_8_ch8_elements_compounds_mixtures",        "display_name": "Nature of Matter: Elements, Compounds, and Mixtures",  "class_level": "8", "subject": "chemistry", "chapter_number": 8},
     "chemistry_8_ch9": {"namespace": "chemistry_8_ch9_solutes_solvents_solutions",         "display_name": "The Amazing World of Solutes, Solvents, and Solutions", "class_level": "8", "subject": "chemistry", "chapter_number": 9},
 
+    # CLASS 8 BIOLOGY + MISC
+    "biology_8_ch1":  {"namespace": "biology_8_ch1_investigative_world",   "display_name": "Exploring the Investigative World of Science", "class_level": "8", "subject": "biology", "chapter_number": 1},
+    "biology_8_ch2":  {"namespace": "biology_8_ch2_invisible_living_world", "display_name": "The Invisible Living World: Beyond Our Naked Eye", "class_level": "8", "subject": "biology", "chapter_number": 2},
+    "biology_8_ch3":  {"namespace": "biology_8_ch3_health_treasure",        "display_name": "Health: The Ultimate Treasure",                "class_level": "8", "subject": "biology", "chapter_number": 3},
+    "biology_8_ch11": {"namespace": "biology_8_ch11_keeping_time",          "display_name": "Keeping Time with the Skies",                  "class_level": "8", "subject": "biology", "chapter_number": 11},
+    "biology_8_ch12": {"namespace": "biology_8_ch12_nature_in_harmony",    "display_name": "How Nature Works in Harmony",                  "class_level": "8", "subject": "biology", "chapter_number": 12},
+    "biology_8_ch13": {"namespace": "biology_8_ch13_earth_home",            "display_name": "Our Home: Earth, a Unique Life Sustaining Planet", "class_level": "8", "subject": "biology", "chapter_number": 13},
+
     # ─────────────────────────────────────────
-    # CLASS 9  (iesc1NN.pdf — integrated Science, PCM chapters)
+    # CLASS 9  (iesc1NN.pdf — 13 chapters)
     # ─────────────────────────────────────────
     # CLASS 9 PHYSICS
     "physics_9_ch4":  {"namespace": "physics_9_ch4_motion",            "display_name": "Describing Motion Around Us",                "class_level": "9", "subject": "physics", "chapter_number": 4},
@@ -67,14 +77,29 @@ NAMESPACE_MAP: dict[str, ChapterMeta] = {
     "chemistry_9_ch8": {"namespace": "chemistry_9_ch8_journey_inside_atom",      "display_name": "Journey Inside the Atom",                  "class_level": "9", "subject": "chemistry", "chapter_number": 8},
     "chemistry_9_ch9": {"namespace": "chemistry_9_ch9_atomic_foundations",      "display_name": "Atomic Foundations of Matter",             "class_level": "9", "subject": "chemistry", "chapter_number": 9},
 
+    # CLASS 9 BIOLOGY + MISC
+    "biology_9_ch1":  {"namespace": "biology_9_ch1_exploration",        "display_name": "Exploration: Entering the World of Secondary Science", "class_level": "9", "subject": "biology", "chapter_number": 1},
+    "biology_9_ch2":  {"namespace": "biology_9_ch2_cell",               "display_name": "Cell: The Building Block of Life",         "class_level": "9", "subject": "biology", "chapter_number": 2},
+    "biology_9_ch3":  {"namespace": "biology_9_ch3_tissues",            "display_name": "Tissues in Action",                          "class_level": "9", "subject": "biology", "chapter_number": 3},
+    "biology_9_ch11": {"namespace": "biology_9_ch11_reproduction",      "display_name": "Reproduction: How Life Continues",           "class_level": "9", "subject": "biology", "chapter_number": 11},
+    "biology_9_ch12": {"namespace": "biology_9_ch12_patterns",          "display_name": "Patterns in Life: Diversity and Classification","class_level": "9", "subject": "biology", "chapter_number": 12},
+    "biology_9_ch13": {"namespace": "biology_9_ch13_earth_system",      "display_name": "Earth as a System: Energy, Matter, and Life","class_level": "9", "subject": "biology", "chapter_number": 13},
+
     # ─────────────────────────────────────────
-    # CLASS 10  (jesc1NN.pdf — integrated Science, PCM chapters)
+    # CLASS 10  (jesc1NN.pdf — 13 chapters)
     # ─────────────────────────────────────────
     # CLASS 10 CHEMISTRY
     "chemistry_10_ch1": {"namespace": "chemistry_10_ch1_chemical_reactions",         "display_name": "Chemical Reactions and Equations", "class_level": "10", "subject": "chemistry", "chapter_number": 1},
     "chemistry_10_ch2": {"namespace": "chemistry_10_ch2_acids_bases_salts",          "display_name": "Acids, Bases and Salts",          "class_level": "10", "subject": "chemistry", "chapter_number": 2},
     "chemistry_10_ch3": {"namespace": "chemistry_10_ch3_metals_and_nonmetals",      "display_name": "Metals and Non-metals",           "class_level": "10", "subject": "chemistry", "chapter_number": 3},
     "chemistry_10_ch4": {"namespace": "chemistry_10_ch4_carbon_compounds",          "display_name": "Carbon and its Compounds",        "class_level": "10", "subject": "chemistry", "chapter_number": 4},
+
+    # CLASS 10 BIOLOGY + MISC
+    "biology_10_ch5":  {"namespace": "biology_10_ch5_life_processes",     "display_name": "Life Processes",                  "class_level": "10", "subject": "biology", "chapter_number": 5},
+    "biology_10_ch6":  {"namespace": "biology_10_ch6_control_coordination", "display_name": "Control and Coordination",         "class_level": "10", "subject": "biology", "chapter_number": 6},
+    "biology_10_ch7":  {"namespace": "biology_10_ch7_reproduction",         "display_name": "How do Organisms Reproduce?",      "class_level": "10", "subject": "biology", "chapter_number": 7},
+    "biology_10_ch8":  {"namespace": "biology_10_ch8_heredity",             "display_name": "Heredity",                         "class_level": "10", "subject": "biology", "chapter_number": 8},
+    "biology_10_ch13": {"namespace": "biology_10_ch13_environment",         "display_name": "Our Environment",                  "class_level": "10", "subject": "biology", "chapter_number": 13},
 
     # CLASS 10 PHYSICS
     "physics_10_ch9":  {"namespace": "physics_10_ch9_light_refraction",     "display_name": "Light – Reflection and Refraction", "class_level": "10", "subject": "physics", "chapter_number": 9},
@@ -86,8 +111,8 @@ NAMESPACE_MAP: dict[str, ChapterMeta] = {
 
 # Derived helpers — keep these in sync with NAMESPACE_MAP.
 ALL_CHAPTER_KEYS: list[str] = sorted(NAMESPACE_MAP.keys())
-ALL_SUBJECTS: list[str] = ["physics", "chemistry"]  # math not in current data
-ALL_CLASSES: list[str] = ["8", "9", "10"]            # no Class 7 in current data
+ALL_SUBJECTS: list[str] = ["physics", "chemistry", "biology"]
+ALL_CLASSES: list[str] = ["8", "9", "10"]
 
 
 def get_chapter_meta(chapter_key: str) -> ChapterMeta:
@@ -113,12 +138,18 @@ def list_chapters_for(subject: str, class_level: str) -> list[str]:
 # Built dynamically so the available-keys list is always in sync with
 # NAMESPACE_MAP. If you add a chapter, you do NOT need to edit the prompt.
 # ─────────────────────────────────────────────────────────────────────────
-CLASSIFIER_PROMPT = """You are a classifier for Class 7, 8, and 9 PCM (Physics, Chemistry, Math) questions.
+CLASSIFIER_PROMPT = """You are a classifier for Class 8, 9, and 10 NCERT Science questions
+(Physics, Chemistry, Biology).
+
+The student's question may be in ENGLISH, HINGLISH (Hindi + English mixed,
+e.g. "bijli ka circuit kaise kaam karta hai?"), or HINDI (Devanagari script).
+Treat all three the same — extract the underlying science concept and
+classify based on that. Do NOT penalize the student for using Hinglish.
 
 Given a student question, return ONLY a valid JSON object with no markdown, no preamble:
 {{
-  "subject": "physics" | "chemistry" | "math" | null,
-  "class_level": "7" | "8" | "9" | null,
+  "subject": "physics" | "chemistry" | "biology" | null,
+  "class_level": "8" | "9" | "10" | null,
   "chapter_key": "<exact key from the list below or null>",
   "confidence": 0.0 to 1.0
 }}
@@ -132,6 +163,10 @@ Rules:
 - If even subject is unclear → return all fields as null
 - Never guess. Low confidence is better than wrong classification.
 - The chapter_key MUST be one of the exact strings in the list above, or null.
+- Hinglish terms to recognize: bijli=electricity, garmi=heat, gati=motion, bal=force,
+  kaam=work, oorja=energy, dhwan=sound, prakash=light, pujya=atom, khanij=mineral,
+  aml=acid, kshar=base, lavan=salt, dravya=mixture, padarth=matter, koshika=cell,
+  khanij=metal, adhigrahan=absorption, poshan=nutrition, swasna=respiration.
 
 Student Question: {user_query}
 """
@@ -140,10 +175,17 @@ Student Question: {user_query}
 # ─────────────────────────────────────────────────────────────────────────
 # ANSWER_GENERATOR_PROMPT — system prompt for the final answer
 # ─────────────────────────────────────────────────────────────────────────
-ANSWER_GENERATOR_PROMPT = """You are EduBot, a friendly and expert tutor for Class 7, 8, and 9 students
-studying Physics, Chemistry, and Mathematics.
+ANSWER_GENERATOR_PROMPT = """You are EduBot, a friendly and expert tutor for Class 8, 9, and 10 students
+studying Physics, Chemistry, and Biology.
 
 You are answering a Class {class_level} {subject} question about: {chapter_name}
+
+The student's question may be in English, Hinglish (Hindi + English
+mixed), or Hindi (Devanagari script). Match the student's language:
+- If the question is in English → answer in English
+- If the question is in Hinglish → answer in Hinglish (same register;
+  technical terms stay in English, explanations can use Hindi)
+- If the question is in Hindi → answer in Hindi (Devanagari)
 
 Rules for your answer:
 1. Always show step-by-step working for problems — never skip steps.
@@ -151,7 +193,7 @@ Rules for your answer:
 3. Write all mathematical expressions in LaTeX format: $formula$ for inline, $$formula$$ for block.
 4. If a diagram is relevant, say "Refer to the diagram below" — diagrams will be attached separately by the system.
 5. End with a one-line summary of the key concept used.
-6. If the question is outside Class 7-9 PCM scope, politely say so and suggest what topic it might belong to.
+6. If the question is outside the available textbook scope, politely say so.
 
 Context from textbook (use this as your primary source of truth):
 {context}

@@ -33,7 +33,7 @@ class AskRequest(BaseModel):
         default=None,
         description="Pre-filter by class. If omitted, the classifier decides.",
     )
-    subject: Optional[Literal["math", "physics", "chemistry"]] = Field(
+    subject: Optional[Literal["math", "physics", "chemistry", "biology"]] = Field(
         default=None,
         description="Pre-filter by subject. If omitted, the classifier decides.",
     )
