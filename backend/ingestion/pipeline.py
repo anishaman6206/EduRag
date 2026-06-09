@@ -31,7 +31,10 @@ from typing import Any
 
 from config.constants import get_chapter_meta, NAMESPACE_MAP
 from config.settings import get_settings
-from services.pinecone_service import upsert_vectors, delete_namespace
+from services.pinecone_service import (
+    upsert_vectors, delete_namespace,
+    fetch_existing_hashes, delete_vectors_by_id,
+)
 from services.supabase_service import save_parent_chunk, upload_diagram
 
 from ingestion.pdf_parser import parse_pdf
@@ -51,9 +54,17 @@ class IngestionSummary:
     namespace: str
     parents_created: int
     children_upserted: int
+    children_added: int       # new (didn't exist before)
+    children_updated: int     # existed with different version_hash
+    children_unchanged: int   # existed with same version_hash — skipped
+    children_deleted: int     # existed in Pinecone, not in new ingest
     diagrams_found: int
     diagrams_kept: int
     diagrams_uploaded: int
+    diagrams_added: int
+    diagrams_updated: int
+    diagrams_unchanged: int
+    diagrams_deleted: int
     vectors_upserted: int
     duration_seconds: float
     errors: list[str]
@@ -168,10 +179,21 @@ async def run_ingestion(
     else:
         logger.info("[4/5] Skipping diagram upload (upload_diagrams_to_storage=False)")
 
-    # ── Step 5: upsert children + diagrams to Pinecone, save parents to Supabase
-    logger.info("[5/5] Upserting vectors to Pinecone '%s'", target_namespace)
+    # ── Step 5: incremental upsert children + diagrams to Pinecone, save parents to Supabase
+    #
+    # Incremental logic: for each chunk, compare its version_hash to
+    # the version_hash of any existing vector with the same id in
+    # Pinecone. Only upsert the diff. Delete any old ids that the
+    # new ingest no longer produces (e.g. chunks that got merged or
+    # removed when the chunker changed).
+    logger.info("[5/5] Incremental upsert to Pinecone '%s'", target_namespace)
+
+    # Counts for the summary
+    children_added = children_updated = children_unchanged = children_deleted = 0
+    diagrams_added = diagrams_updated = diagrams_unchanged = diagrams_deleted = 0
+
     try:
-        # Build child vectors
+        # Build new child + diagram payloads
         child_payloads = [
             {
                 "id": c.id,
@@ -180,8 +202,6 @@ async def run_ingestion(
             }
             for i, c in enumerate(children)
         ]
-
-        # Build diagram vectors
         diagram_payloads = [
             {
                 "id": d.chunk_id,
@@ -191,11 +211,75 @@ async def run_ingestion(
             for i, d in enumerate(diagram_results)
         ]
 
-        all_payloads = child_payloads + diagram_payloads
-        if all_payloads:
-            await upsert_vectors(target_namespace, all_payloads)
-        logger.info("       Upserted %d vectors (%d children + %d diagrams)",
-                    len(all_payloads), len(child_payloads), len(diagram_payloads))
+        # Fetch existing version_hashes for both pools
+        existing_child_hashes = await fetch_existing_hashes(
+            target_namespace, [c.id for c in children],
+        )
+        existing_diagram_hashes = await fetch_existing_hashes(
+            target_namespace, [d.chunk_id for d in diagram_results],
+        )
+
+        # Diff: keep only the vectors whose content actually changed
+        # (or are new). Skip vectors whose version_hash matches the
+        # existing one — Pinecone already has them, no work needed.
+        to_upsert: list[dict] = []
+        to_delete: list[str] = []
+
+        for payload, child in zip(child_payloads, children):
+            new_hash = child.metadata.get("version_hash", "")
+            old_hash = existing_child_hashes.get(child.id)
+            if old_hash is None:
+                children_added += 1
+                to_upsert.append(payload)
+            elif old_hash == new_hash:
+                children_unchanged += 1
+            else:
+                children_updated += 1
+                to_upsert.append(payload)
+
+        for payload, diagram in zip(diagram_payloads, diagram_results):
+            new_hash = diagram.version_hash
+            old_hash = existing_diagram_hashes.get(diagram.chunk_id)
+            if old_hash is None:
+                diagrams_added += 1
+                to_upsert.append(payload)
+            elif old_hash == new_hash:
+                diagrams_unchanged += 1
+            else:
+                diagrams_updated += 1
+                to_upsert.append(payload)
+
+        # Find children/diagrams that existed before but no longer exist
+        new_child_ids = {c.id for c in children}
+        new_diagram_ids = {d.chunk_id for d in diagram_results}
+        for old_id in existing_child_hashes:
+            if old_id not in new_child_ids:
+                # Only count children that look like child chunks (chapter_key_X_HASH)
+                # to avoid deleting unrelated vectors in a shared namespace.
+                if old_id.startswith(f"{chapter_key}_") and "_d_" not in old_id:
+                    to_delete.append(old_id)
+                    children_deleted += 1
+        for old_id in existing_diagram_hashes:
+            if old_id not in new_diagram_ids:
+                if "_d_" in old_id and old_id.startswith(f"{chapter_key}_"):
+                    to_delete.append(old_id)
+                    diagrams_deleted += 1
+
+        # Apply the diff
+        if to_upsert:
+            await upsert_vectors(target_namespace, to_upsert)
+        if to_delete:
+            await delete_vectors_by_id(target_namespace, to_delete)
+
+        logger.info(
+            "       Diff: +%d children, ~%d updated, =%d unchanged, -%d deleted;"
+            " +%d diagrams, ~%d updated, =%d unchanged, -%d deleted."
+            " Sent %d upserts, %d deletes (skipped %d unchanged).",
+            children_added, children_updated, children_unchanged, children_deleted,
+            diagrams_added, diagrams_updated, diagrams_unchanged, diagrams_deleted,
+            len(to_upsert), len(to_delete),
+            children_unchanged + diagrams_unchanged,
+        )
     except Exception as e:
         errors.append(f"Pinecone upsert failed: {e}")
         logger.exception("Pinecone upsert failed")
@@ -223,11 +307,19 @@ async def run_ingestion(
         chapter_key=chapter_key,
         namespace=target_namespace,
         parents_created=len(parents),
-        children_upserted=len(children),
+        children_upserted=len(to_upsert),
+        children_added=children_added,
+        children_updated=children_updated,
+        children_unchanged=children_unchanged,
+        children_deleted=children_deleted,
         diagrams_found=len(parsed.diagrams),
         diagrams_kept=len(diagram_results),
         diagrams_uploaded=diagrams_uploaded,
-        vectors_upserted=len(child_payloads) + len(diagram_payloads),
+        diagrams_added=diagrams_added,
+        diagrams_updated=diagrams_updated,
+        diagrams_unchanged=diagrams_unchanged,
+        diagrams_deleted=diagrams_deleted,
+        vectors_upserted=len(to_upsert),
         duration_seconds=round(elapsed, 2),
         errors=errors,
     )
@@ -250,6 +342,7 @@ def _child_metadata(c: ChildChunk) -> dict[str, Any]:
         "chunk_index": c.chunk_index,
         "token_count": c.token_count,
         "content_hash": c.metadata.get("content_hash", ""),
+        "version_hash": c.metadata.get("version_hash", ""),
     }
     if c.page is not None:
         md["page"] = c.page
@@ -268,6 +361,7 @@ def _diagram_metadata(d: DiagramResult) -> dict[str, Any]:
         "caption": d.caption or "",
         "diagram_url": d.public_url or "",
         "image_hash": d.image_hash,
+        "version_hash": d.version_hash,
         "storage_path": d.storage_path,
     }
 

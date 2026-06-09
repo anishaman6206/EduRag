@@ -75,6 +75,7 @@ class DiagramResult:
     subject: str
     page: int
     caption: str | None
+    version_hash: str                # hash of description; for incremental ingest
 
     # Source side
     image_bytes: bytes
@@ -208,6 +209,9 @@ async def process_diagram(
     )
 
     chunk_id = f"{chapter_key}_d_{candidate.page_number}_{image_hash}"
+    # version_hash of the *description* text (what we embed). Changes
+    # when the surrounding-page text changes between ingests.
+    version_hash = hashlib.sha256(description.encode("utf-8")).hexdigest()[:8]
 
     return DiagramResult(
         chunk_id=chunk_id,
@@ -219,6 +223,7 @@ async def process_diagram(
         caption=candidate.caption,
         image_bytes=candidate.image_bytes,
         image_hash=image_hash,
+        version_hash=version_hash,
         storage_path=storage_path,
         public_url=public_url,
     )

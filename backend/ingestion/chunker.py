@@ -311,6 +311,11 @@ def _split_children(parent: ParentChunk) -> list[ChildChunk]:
 
         piece = text[cursor:best_end].strip()
         if piece:
+            # version_hash = hash of THIS chunk's text (not the parent's).
+            # Used by the ingestion pipeline to detect which chunks have
+            # actually changed between ingests so we can do incremental
+            # updates (only upsert the diff).
+            vhash = hashlib.sha256(piece.encode("utf-8")).hexdigest()[:8]
             children.append(ChildChunk(
                 id=f"{parent.chapter_key}_{idx}_{parent.metadata['content_hash']}",
                 parent_id=parent.id,
@@ -325,6 +330,7 @@ def _split_children(parent: ParentChunk) -> list[ChildChunk]:
                 page=parent.page_start,  # rough — first page the parent spans
                 metadata={
                     "content_hash": parent.metadata["content_hash"],
+                    "version_hash": vhash,
                     "page_end": parent.page_end,
                 },
             ))

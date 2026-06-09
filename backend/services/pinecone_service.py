@@ -124,3 +124,43 @@ async def delete_namespace(namespace: str) -> None:
     index = get_index()
     index.delete(delete_all=True, namespace=namespace)
     logger.warning("Rolled back namespace='%s'", namespace)
+
+
+async def fetch_existing_hashes(
+    namespace: str,
+    candidate_ids: list[str],
+) -> dict[str, str]:
+    """
+    For incremental ingest: return {chunk_id: version_hash} for every
+    id in `candidate_ids` that ALREADY exists in the namespace. We
+    fetch in batches of 100 (Pinecone limit). Ids not in the namespace
+    are simply absent from the returned dict.
+    """
+    if not candidate_ids:
+        return {}
+
+    index = get_index()
+    out: dict[str, str] = {}
+    BATCH = 100
+    try:
+        for i in range(0, len(candidate_ids), BATCH):
+            batch = candidate_ids[i:i + BATCH]
+            response = index.fetch(ids=batch, namespace=namespace)
+            for vec_id, vec in (response.vectors or {}).items():
+                md = dict(vec.metadata or {})
+                out[vec_id] = md.get("version_hash", "")
+    except Exception as e:
+        logger.warning("fetch_existing_hashes failed for %s: %s", namespace, e)
+    return out
+
+
+async def delete_vectors_by_id(namespace: str, ids: list[str]) -> None:
+    """Delete specific vectors by id. Used for incremental cleanup."""
+    if not ids:
+        return
+    index = get_index()
+    BATCH = 100
+    for i in range(0, len(ids), BATCH):
+        batch = ids[i:i + BATCH]
+        index.delete(ids=batch, namespace=namespace)
+    logger.info("Deleted %d stale vectors from namespace='%s'", len(ids), namespace)

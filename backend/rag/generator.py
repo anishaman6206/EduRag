@@ -35,6 +35,9 @@ from services.openai_service import stream_chat
 
 from rag.classifier import Classification
 from rag.retriever import RetrievedChunk
+from rag.status import (
+    get_status_emitter, reading_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +52,13 @@ def _sse(event: dict) -> str:
     that the SSE protocol requires to delimit events.
     """
     return f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+
+
+async def _emit_status(message: str) -> str:
+    """Encode a status event, or return empty string if no emitter set."""
+    if not message:
+        return ""
+    return _sse({"type": "status", "message": message})
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -134,6 +144,10 @@ async def stream_answer(
         )
 
     # ── Stream tokens from the LLM
+    # Emit a 'reading' status right before the first token, so the
+    # user sees the pipeline progress even if the LLM takes a moment.
+    yield await _emit_status(reading_message())
+
     token_count = 0
     try:
         async for delta in stream_chat(

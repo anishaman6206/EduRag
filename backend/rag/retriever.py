@@ -42,6 +42,7 @@ from services.pinecone_service import query_namespace
 from services.openai_service import get_embedding
 
 from rag.classifier import Classification
+from rag.status import get_status_emitter, searching_message
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +318,18 @@ class HybridRetriever:
         Returns:
             list of RetrievedChunk, fused and ranked, length <= top_k.
         """
+        # Status: "Finding the most relevant sections…"
+        # The retriever doesn't yield SSE events (it returns a list),
+        # so the route handler will fire the status event around the
+        # await call. This is here for future async-iterator support.
+        # We just log it for now.
+        emitter = get_status_emitter()
+        if emitter:
+            try:
+                await emitter(searching_message())
+            except Exception:
+                pass  # status is best-effort
+
         namespaces = _resolve_namespaces(classification)
         if not namespaces:
             return []
