@@ -34,6 +34,7 @@ from config.settings import get_settings
 from services.pinecone_service import (
     upsert_vectors, delete_namespace,
     fetch_existing_hashes, delete_vectors_by_id,
+    list_all_ids_in_namespace,
 )
 from services.supabase_service import save_parent_chunk, upload_diagram
 
@@ -249,21 +250,35 @@ async def run_ingestion(
                 diagrams_updated += 1
                 to_upsert.append(payload)
 
-        # Find children/diagrams that existed before but no longer exist
+        # Find children/diagrams that existed before but no longer exist.
+        #
+        # Important: existing_child_hashes / existing_diagram_hashes only
+        # contains IDs from the NEW ingest's candidate set, so they
+        # can't tell us about stale vectors whose IDs are no longer
+        # produced. We need a full enumeration of the namespace to
+        # find those.
         new_child_ids = {c.id for c in children}
         new_diagram_ids = {d.chunk_id for d in diagram_results}
-        for old_id in existing_child_hashes:
-            if old_id not in new_child_ids:
-                # Only count children that look like child chunks (chapter_key_X_HASH)
-                # to avoid deleting unrelated vectors in a shared namespace.
-                if old_id.startswith(f"{chapter_key}_") and "_d_" not in old_id:
-                    to_delete.append(old_id)
-                    children_deleted += 1
-        for old_id in existing_diagram_hashes:
-            if old_id not in new_diagram_ids:
-                if "_d_" in old_id and old_id.startswith(f"{chapter_key}_"):
-                    to_delete.append(old_id)
+
+        # Only do the full-namespace scan if this is a "small" chapter.
+        # For 1000s of vectors the list() call is still <2s on Pinecone
+        # serverless, but no point scanning when nothing could possibly
+        # be stale (a fresh namespace, for example).
+        if existing_child_hashes or existing_diagram_hashes or len(to_upsert) == 0:
+            all_existing_ids = await list_all_ids_in_namespace(target_namespace)
+        else:
+            all_existing_ids = list(existing_child_hashes.keys()) + list(existing_diagram_hashes.keys())
+
+        for old_id in all_existing_ids:
+            if old_id not in new_child_ids and old_id not in new_diagram_ids:
+                # Only delete IDs we recognize as belonging to this chapter
+                if not old_id.startswith(f"{chapter_key}_"):
+                    continue
+                if "_d_" in old_id:
                     diagrams_deleted += 1
+                else:
+                    children_deleted += 1
+                to_delete.append(old_id)
 
         # Apply the diff
         if to_upsert:

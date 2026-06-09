@@ -164,3 +164,19 @@ async def delete_vectors_by_id(namespace: str, ids: list[str]) -> None:
         batch = ids[i:i + BATCH]
         index.delete(ids=batch, namespace=namespace)
     logger.info("Deleted %d stale vectors from namespace='%s'", len(ids), namespace)
+
+
+async def list_all_ids_in_namespace(namespace: str) -> list[str]:
+    """
+    Enumerate every vector id in a namespace. Uses Pinecone's
+    list() generator (yields batches of id strings). For namespaces
+    with thousands of vectors, this is still fast (a few seconds).
+    """
+    index = get_index()
+    ids: list[str] = []
+    try:
+        for batch in index.list(prefix="", namespace=namespace):
+            ids.extend(batch)
+    except Exception as e:
+        logger.warning("list_all_ids_in_namespace(%s) failed: %s", namespace, e)
+    return ids
