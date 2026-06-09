@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+}
+
+/* Markdown content styling for AI message bubbles */
+.prose-message {
+  @apply text-sm leading-relaxed text-gray-800;
+}
+.prose-message p {
+  @apply my-2;
+}
+.prose-message h1, .prose-message h2, .prose-message h3 {
+  @apply font-semibold mt-4 mb-2;
+}
+.prose-message h1 { @apply text-xl; }
+.prose-message h2 { @apply text-lg; }
+.prose-message h3 { @apply text-base; }
+.prose-message ul, .prose-message ol {
+  @apply my-2 pl-5;
+}
+.prose-message ul { @apply list-disc; }
+.prose-message ol { @apply list-decimal; }
+.prose-message code {
+  @apply px-1 py-0.5 rounded bg-gray-100 font-mono text-xs;
+}
+.prose-message pre {
+  @apply bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto text-xs;
+}
+.prose-message pre code {
+  @apply bg-transparent p-0 text-gray-100;
+}
+.prose-message a {
+  @apply text-brand-600 underline;
+}
+.prose-message blockquote {
+  @apply border-l-4 border-gray-200 pl-3 my-2 text-gray-600 italic;
+}
