@@ -229,3 +229,9 @@ CLAUDE.local.md
 .continue/
 *.claude.md
 .clinerules*
+
+# Source data (PDFs, extracted text, etc.) — never commit
+pdfs/
+data/
+*.pdf
+!backend/**/*.pdf   # tests/docs may include small PDFs
