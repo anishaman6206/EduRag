@@ -25,6 +25,21 @@ create index if not exists chat_messages_conversation_id_idx
     on public.chat_messages (conversation_id, created_at desc)
     where conversation_id is not null;
 
+-- ─────────────────────────────────────────────────────────────────────────
+-- Migration: add conversation_id column to existing chat_messages tables
+-- (only runs the ALTER TABLE if the column doesn't exist)
+-- ─────────────────────────────────────────────────────────────────────────
+do $$
+begin
+    if not exists (
+        select 1 from information_schema.columns
+        where table_name = 'chat_messages'
+        and column_name = 'conversation_id'
+    ) then
+        alter table public.chat_messages add column conversation_id text;
+    end if;
+end $$;
+
 
 -- Parent chunks: 1200-token blocks stored in Postgres so the retriever
 -- can swap them in for the LLM context at generation time.

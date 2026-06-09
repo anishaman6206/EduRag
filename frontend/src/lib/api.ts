@@ -97,3 +97,66 @@ export async function getHealth(): Promise<HealthResponse> {
   }
   return (await res.json()) as HealthResponse;
 }
+
+/**
+ * GET /chapters — list available NCERT chapters.
+ * Used to populate the chapter filter dropdown.
+ */
+export interface Chapter {
+  chapter_key: string;
+  display_name: string;
+  class_level: string;
+  subject: string;
+  chapter_number: number;
+}
+
+export async function listChapters(filters?: {
+  class_level?: string;
+  subject?: string;
+}): Promise<Chapter[]> {
+  const url = new URL(`${API_BASE}/chapters`, window.location.origin);
+  if (filters?.class_level) url.searchParams.set("class_level", filters.class_level);
+  if (filters?.subject) url.searchParams.set("subject", filters.subject);
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`/chapters failed: HTTP ${res.status}`);
+  }
+  return (await res.json()) as Chapter[];
+}
+
+/**
+ * GET /history?mode=conversations — list conversation threads.
+ */
+export interface ConversationSummary {
+  conversation_id: string;
+  first_query: string;
+  last_message_at: string;
+  message_count: number;
+}
+
+export async function listConversations(userId: string): Promise<ConversationSummary[]> {
+  const url = new URL(`${API_BASE}/history`, window.location.origin);
+  url.searchParams.set("user_id", userId);
+  url.searchParams.set("mode", "conversations");
+  url.searchParams.set("limit", "50");
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`/history?mode=conversations failed: HTTP ${res.status}`);
+  }
+  return (await res.json()) as ConversationSummary[];
+}
+
+/**
+ * GET /history?conversation_id=X — full messages for one thread,
+ * oldest first.
+ */
+export async function getConversationMessages(conversationId: string, userId: string): Promise<HistoryItem[]> {
+  const url = new URL(`${API_BASE}/history`, window.location.origin);
+  url.searchParams.set("user_id", userId);
+  url.searchParams.set("conversation_id", conversationId);
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`/history?conversation_id failed: HTTP ${res.status}`);
+  }
+  return (await res.json()) as HistoryItem[];
+}

@@ -44,6 +44,13 @@ class AskRequest(BaseModel):
         description="Pre-filter by subject. If omitted, the dense retriever "
                     "fans out across all 39 namespaces.",
     )
+    chapter_key: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Pin to a specific chapter (e.g. 'physics_8_ch4'). "
+                    "If set, overrides class+subject filters and the retriever "
+                    "searches only that chapter's namespace.",
+    )
     user_id: Optional[str] = Field(
         default=None,
         max_length=128,

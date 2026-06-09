@@ -1,17 +1,28 @@
 "use client";
 
 /**
- * ChatWindow — the main chat container. Composes:
- *  - Filter bar (SubjectClassFilter)
- *  - Scrollable message list (auto-scrolls to bottom on new content)
- *  - QueryInput at the bottom
- *  - Stop button while a stream is in progress
+ * ChatWindow — the main chat container.
  *
- * Pulls everything from useChatStore. The actual streaming is
- * triggered by useStream.sendQuery().
+ * Layout:
+ *   [ Sidebar (history) | Chat area ]
+ *                          - Header: filters + new conversation
+ *                          - Messages (auto-scroll)
+ *                          - Input bar
+ *
+ * History sidebar:
+ *   - List of past conversation threads (newest first)
+ *   - Click to load that thread's messages
+ *   - "New conversation" button at the top — resets the
+ *     localStorage conversation_id and clears the chat
+ *
+ * Filters (top of chat area):
+ *   - Class dropdown
+ *   - Subject dropdown
+ *   - Chapter dropdown (populated from /chapters, filtered by
+ *     selected class+subject)
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 
 import { useChatStore } from "@/store/chatStore";
@@ -20,7 +31,33 @@ import { useAuth } from "@/hooks/useAuth";
 import { MessageBubble } from "./MessageBubble";
 import { QueryInput } from "./QueryInput";
 import { SubjectClassFilter } from "@/components/Filters/SubjectClassFilter";
-import type { ClassLevel, Subject } from "@/lib/types";
+import { HistorySidebar } from "./HistorySidebar";
+import {
+  listChapters,
+  listConversations,
+  getConversationMessages,
+  type Chapter,
+  type ConversationSummary,
+} from "@/lib/api";
+import type { ClassLevel, Subject, ChatMessage } from "@/lib/types";
+
+function uuid(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function getOrCreateConversationId(): string {
+  if (typeof window === "undefined") return "ssr";
+  let cid = window.localStorage.getItem("edurag:conversation_id");
+  if (!cid) {
+    cid = uuid();
+    window.localStorage.setItem("edurag:conversation_id", cid);
+  }
+  return cid;
+}
 
 export function ChatWindow() {
   const auth = useAuth();
@@ -28,8 +65,73 @@ export function ChatWindow() {
   const { sendQuery, cancel, isStreaming } = useStream();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Conversation state
+  const [conversationId, setConversationId] = useState<string>("");
+  useEffect(() => {
+    setConversationId(getOrCreateConversationId());
+  }, []);
+
+  // Filters
   const [classLevel, setClassLevel] = useState<ClassLevel | "">("");
   const [subject, setSubject] = useState<Subject | "" | "all">("all");
+  const [chapterKey, setChapterKey] = useState<string>("");
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+
+  // History sidebar
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+
+  const userId = auth.user?.id || "anonymous";
+
+  // Fetch chapters when filters change
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cs = await listChapters({
+          class_level: classLevel || undefined,
+          subject: subject === "all" ? undefined : (subject || undefined),
+        });
+        if (!cancelled) {
+          setChapters(cs);
+          // If the currently-selected chapter_key is no longer in
+          // the filtered list, clear it.
+          if (chapterKey && !cs.find((c) => c.chapter_key === chapterKey)) {
+            setChapterKey("");
+          }
+        }
+      } catch (e) {
+        console.warn("listChapters failed:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classLevel, subject]);
+
+  // Fetch conversation list when the sidebar opens (and on first
+  // mount). Refreshes when the store changes (so a new message
+  // updates the sidebar after a delay).
+  const refreshConversations = useCallback(async () => {
+    if (!userId || userId === "anonymous") {
+      setConversations([]);
+      return;
+    }
+    try {
+      const cs = await listConversations(userId);
+      setConversations(cs);
+    } catch (e) {
+      console.warn("listConversations failed:", e);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      refreshConversations();
+    }
+  }, [sidebarOpen, refreshConversations, store.messages.length]);
 
   // Auto-scroll to bottom on new content
   useEffect(() => {
@@ -40,81 +142,181 @@ export function ChatWindow() {
     sendQuery(text, {
       class_level: classLevel || undefined,
       subject: subject === "all" ? undefined : (subject || undefined),
+      chapter_key: chapterKey || undefined,
     });
+    // Refresh conversations after a moment so the new thread shows
+    // up in the sidebar.
+    setTimeout(() => refreshConversations(), 1500);
+  }
+
+  function startNewConversation() {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("edurag:conversation_id");
+    }
+    const newId = uuid();
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("edurag:conversation_id", newId);
+    }
+    setConversationId(newId);
+    setActiveConversationId(null);
+    store.reset();
+    setSidebarOpen(false);
+  }
+
+  async function loadConversation(convId: string) {
+    setActiveConversationId(convId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("edurag:conversation_id", convId);
+    }
+    setConversationId(convId);
+    try {
+      const rows = await getConversationMessages(convId, userId);
+      // Convert DB rows → ChatMessage[] for the store
+      const msgs: ChatMessage[] = rows.flatMap((r) => [
+        {
+          id: `${r.id}-q`,
+          role: "user" as const,
+          content: r.query,
+          created_at: r.created_at,
+        },
+        {
+          id: `${r.id}-a`,
+          role: "assistant" as const,
+          content: r.answer,
+          sources: r.sources ?? undefined,
+          created_at: r.created_at,
+        },
+      ]);
+      store.reset();
+      for (const m of msgs) store.appendMessage(m);
+    } catch (e) {
+      console.warn("loadConversation failed:", e);
+    }
+    setSidebarOpen(false);
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-lg font-bold text-gray-900">
-            EduRag
-          </Link>
-          <span className="text-xs text-gray-400">NCERT doubt solver</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <SubjectClassFilter
-            classLevel={classLevel}
-            subject={subject}
-            onChange={(next) => {
-              setClassLevel(next.classLevel);
-              setSubject(next.subject);
-            }}
-            disabled={isStreaming}
-          />
-          {auth.user ? (
+    <div className="flex h-screen bg-gray-50">
+      {/* Sidebar — hidden on small screens unless toggled */}
+      {sidebarOpen && (
+        <HistorySidebar
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onSelect={loadConversation}
+          onNew={startNewConversation}
+          onClose={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Header */}
+        <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 bg-white">
+          <div className="flex items-center gap-2 min-w-0">
             <button
-              onClick={() => auth.signOut()}
-              className="text-sm text-gray-600 hover:text-gray-900"
+              onClick={() => setSidebarOpen((v) => !v)}
+              aria-label="Toggle history"
+              className="p-1.5 rounded-md hover:bg-gray-100 text-gray-600"
             >
-              Sign out
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
             </button>
-          ) : (
-            <Link
-              href="/login"
-              className="text-sm px-3 py-1.5 bg-brand-600 text-white rounded-md hover:bg-brand-700"
+            <button
+              onClick={startNewConversation}
+              className="px-2 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1"
             >
-              Sign in
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span className="hidden sm:inline">New chat</span>
+            </button>
+            <Link href="/" className="ml-2 text-lg font-bold text-gray-900">
+              EduRag
             </Link>
-          )}
-        </div>
-      </header>
-
-      {/* Messages */}
-      <main className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {store.messages.length === 0 && <EmptyState />}
-        {store.messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
-        ))}
-        {store.error && (
-          <div className="max-w-3xl mx-auto rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-            {store.error}
+            <span className="text-xs text-gray-400 hidden sm:inline">NCERT doubt solver</span>
           </div>
-        )}
-        <div ref={messagesEndRef} />
-      </main>
 
-      {/* Input bar */}
-      <footer className="border-t border-gray-200 bg-white px-4 py-3">
-        <div className="max-w-3xl mx-auto flex items-end gap-2">
-          <div className="flex-1">
-            <QueryInput
-              onSubmit={handleSubmit}
+          <div className="flex items-center gap-2">
+            <SubjectClassFilter
+              classLevel={classLevel}
+              subject={subject}
+              onChange={(next) => {
+                setClassLevel(next.classLevel);
+                setSubject(next.subject);
+              }}
               disabled={isStreaming}
-              placeholder="Ask a doubt… (Ctrl+Enter to send)"
             />
-          </div>
-          {isStreaming && (
-            <button
-              onClick={cancel}
-              className="px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+            <select
+              aria-label="Chapter"
+              value={chapterKey}
+              onChange={(e) => setChapterKey(e.target.value)}
+              disabled={isStreaming || chapters.length === 0}
+              className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 max-w-[180px] truncate"
+              title={chapters.find((c) => c.chapter_key === chapterKey)?.display_name ?? ""}
             >
-              Stop
-            </button>
+              <option value="">All chapters</option>
+              {chapters.map((c) => (
+                <option key={c.chapter_key} value={c.chapter_key}>
+                  {c.display_name}
+                </option>
+              ))}
+            </select>
+            {auth.user ? (
+              <button
+                onClick={() => auth.signOut()}
+                className="text-sm text-gray-600 hover:text-gray-900"
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="text-sm px-3 py-1.5 bg-brand-600 text-white rounded-md hover:bg-brand-700"
+              >
+                Sign in
+              </Link>
+            )}
+          </div>
+        </header>
+
+        {/* Messages */}
+        <main className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          {store.messages.length === 0 && <EmptyState />}
+          {store.messages.map((m) => (
+            <MessageBubble key={m.id} message={m} />
+          ))}
+          {store.error && (
+            <div className="max-w-3xl mx-auto rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+              {store.error}
+            </div>
           )}
-        </div>
-      </footer>
+          <div ref={messagesEndRef} />
+        </main>
+
+        {/* Input bar */}
+        <footer className="border-t border-gray-200 bg-white px-4 py-3">
+          <div className="max-w-3xl mx-auto flex items-end gap-2">
+            <div className="flex-1">
+              <QueryInput
+                onSubmit={handleSubmit}
+                disabled={isStreaming}
+                placeholder="Ask a doubt from your NCERT textbook… (Ctrl+Enter to send)"
+              />
+            </div>
+            {isStreaming && (
+              <button
+                onClick={cancel}
+                className="px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Stop
+              </button>
+            )}
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
@@ -127,8 +329,9 @@ function EmptyState() {
         Ask a doubt from your NCERT textbook
       </h1>
       <p className="text-sm text-gray-500 mb-6">
-        I'm an AI tutor grounded in Class 7-10 NCERT. I'll cite the exact
-        chapter and page number, and pull in diagrams from your book.
+        I'm your friendly tutor, grounded in Class 8 NCERT science.
+        I'll cite the exact chapter and page number, and pull in diagrams from your book.
+        Try asking in English, Hinglish, or Hindi — I understand all three!
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
         {SAMPLE_PROMPTS.map((p) => (
@@ -148,5 +351,6 @@ const SAMPLE_PROMPTS = [
   "What is an electric circuit?",
   "How do forces affect motion?",
   "What is the difference between acids and bases?",
-  "Explain Newton's second law with an example.",
+  "force kya hai? (Hinglish)",
+  "Aur detail mein batao ek example ke saath",
 ];

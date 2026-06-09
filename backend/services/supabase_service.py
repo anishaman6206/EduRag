@@ -68,6 +68,7 @@ async def get_conversation_history(
     user_id: str,
     conversation_id: str,
     limit: int = 6,
+    max_chars_per_turn: int = 1500,
 ) -> list[dict[str, str]]:
     """
     Fetch the last N turns of a conversation in chronological order
@@ -75,8 +76,8 @@ async def get_conversation_history(
     context for the generator prompt.
 
     Returns a list of {"role": "user"|"assistant", "content": str}
-    dicts. The most recent assistant message is excluded (it's
-    incomplete — the /ask endpoint is currently writing it).
+    dicts. Long assistant answers are truncated to
+    `max_chars_per_turn` chars to keep the prompt small.
     """
     client = get_supabase()
     response = (
@@ -88,22 +89,91 @@ async def get_conversation_history(
         .limit(limit + 1)  # +1 to skip the in-flight assistant msg
         .execute()
     )
-    rows = response.data or []
-    # Skip the most recent row if it's an assistant turn (still
-    # being written by the current /ask call). We detect this by
-    # ordering DESC and dropping rows where the previous turn is
-    # the user's current query — easiest approximation: just take
-    # the older ones, ignoring the very latest assistant.
-    # Sort ASC for the LLM.
-    rows = list(reversed(rows))
+    rows = list(reversed(response.data or []))
 
     out: list[dict[str, str]] = []
     for r in rows:
         if r.get("query"):
             out.append({"role": "user", "content": r["query"]})
         if r.get("answer"):
-            out.append({"role": "assistant", "content": r["answer"]})
+            ans = r["answer"]
+            if len(ans) > max_chars_per_turn:
+                ans = ans[:max_chars_per_turn] + "…"
+            out.append({"role": "assistant", "content": ans})
     return out[-limit * 2:]  # cap total tokens roughly
+
+
+async def list_conversations(
+    *,
+    user_id: str,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """
+    List the most recent N conversation threads for a user, newest
+    first. Returns one row per conversation with:
+      - conversation_id
+      - first_query (the student's opening question in that thread)
+      - last_message_at (timestamp of the most recent message)
+      - message_count
+
+    Used by the frontend's history sidebar.
+    """
+    from sqlalchemy import text  # not used; placeholder
+    client = get_supabase()
+    # Supabase-py doesn't have a great GROUP BY helper, so we fetch
+    # recent rows and aggregate in Python. Fine for a chat app at this
+    # scale (a few hundred messages per user max).
+    response = (
+        client.table("chat_messages")
+        .select("conversation_id, query, created_at")
+        .eq("user_id", user_id)
+        .not_.is_("conversation_id", "null")
+        .order("created_at", desc=True)
+        .limit(500)  # safety cap — covers ~50 conversations
+        .execute()
+    )
+    rows = response.data or []
+
+    # Group by conversation_id, keep first + last + count
+    seen: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        cid = r.get("conversation_id")
+        if not cid:
+            continue
+        if cid not in seen:
+            seen[cid] = {
+                "conversation_id": cid,
+                "first_query": r.get("query", ""),
+                "last_message_at": r.get("created_at"),
+                "message_count": 0,
+            }
+        seen[cid]["message_count"] += 1
+        # 'first_query' is the OLDEST query in the thread (since we
+        # fetched DESC). Capture from the LAST row we see for this cid.
+        if r.get("query"):
+            seen[cid]["first_query"] = r.get("query", seen[cid]["first_query"])
+
+    # Sort by last_message_at DESC
+    out = sorted(seen.values(), key=lambda x: x["last_message_at"], reverse=True)
+    return out[:limit]
+
+
+async def get_messages_by_conversation(
+    *,
+    user_id: str,
+    conversation_id: str,
+) -> list[dict[str, Any]]:
+    """Full chat_messages rows for one conversation, oldest first."""
+    client = get_supabase()
+    response = (
+        client.table("chat_messages")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("conversation_id", conversation_id)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return response.data or []
 
 
 # ─────────────────────────────────────────────────────────────────────────

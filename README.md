@@ -206,14 +206,15 @@ We build **step by step**, commit after each step, and only then move on.
 | # | Component | Status | Notes |
 |---|---|---|---|
 | 1 | `requirements.txt` + `package.json` | done | pinned versions |
-| 2 | `backend/config/constants.py` | done | 22 chapters aligned with the actual NCERT PDFs in `pdfs/Data/`, 3 prompts |
+| 2 | `backend/config/constants.py` | done | 39 chapters aligned with the actual NCERT PDFs in `pdfs/Data/`, 3 prompts |
 | 3 | `backend/config/settings.py` | done | OpenAI gpt-4o-mini + DEV_MODE |
 | 4 | `backend/services/` (5 files) | done | openai, pinecone, supabase, redis, cohere |
-| 5 | `backend/rag/` | done | classifier, retriever (hybrid dense + BM25), reranker, generator with status SSE events |
-| 6 | `backend/api/routes/` | done | query (SSE), history, health |
+| 5 | `backend/rag/` | done | refiner (multilingual), dense retriever with embedding cache, optional reranker, streaming generator |
+| 6 | `backend/api/routes/` | done | query (SSE), history (with conversation grouping), health, chapters |
 | 7 | `backend/ingestion/` | done | parser, chunker, diagram_processor, embedder, pipeline with incremental upsert |
-| 8 | `frontend/` | done | hooks, components, store, pages, Supabase Auth (email magic link) |
+| 8 | `frontend/` | done | hooks, components (history sidebar, new-chat button, chapter filter), store, pages, Supabase Auth (email magic link + Google) |
 | 9 | `docker-compose.yml`, `scripts/`, full README updates | done | all three services wired up |
+| 8b | UX polish | done | history tab, new conv button, chapter filter, empty state copy, migration script |
 
 What works **today**: full end-to-end RAG pipeline. `POST /ask` streams
 SSE events (status → token → diagrams → sources → done) to the
@@ -428,12 +429,13 @@ PYTHONPATH=backend python scripts/ingest_all.py --subject-filter physics
 PYTHONPATH=backend python scripts/ingest_all.py --upload-diagrams
 ```
 
-Expected time for the full 22-chapter ingest:
+Expected time for the full 39-chapter ingest:
 
-- Without `--upload-diagrams`: **~10-15 minutes**
-- With `--upload-diagrams`: **~15-25 minutes**
+- Without `--upload-diagrams`: **~15-20 minutes**
+- With `--upload-diagrams`: **~30-40 minutes**
 
-Cost: ~$0.03 in OpenAI embeddings (no LLM is called at ingest time).
+Cost: ~$0.05 in OpenAI embeddings for the full 39-chapter
+ingest (no LLM is called at ingest time).
 
 ### Idempotency
 
@@ -455,8 +457,9 @@ of its content. On re-run:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/ask` | Send a question, get a streaming SSE answer |
-| `GET`  | `/history?user_id=…` | Last N messages for a user |
+| `POST` | `/ask` | Send a question, get a streaming SSE answer (multi-turn + multilingual) |
+| `GET`  | `/history?user_id=…&mode=messages\|conversations&conversation_id=…` | Recent messages OR conversation thread summary |
+| `GET`  | `/chapters?class_level=…&subject=…` | List of available NCERT chapters for the filter UI |
 | `GET`  | `/health` | Liveness + readiness check (verifies OpenAI, Pinecone, Supabase, Redis) |
 
 ### `POST /ask`
@@ -465,21 +468,57 @@ of its content. On re-run:
 ```json
 {
   "query": "What is Newton's second law?",
-  "class_level": "9",
-  "subject": "physics",        // optional; omit to let classifier decide
-  "user_id": "anon-abc123"     // optional; defaults to anonymous
+  "class_level": "9",                 // optional; pins retriever to class
+  "subject": "physics",               // optional; pins retriever to subject
+  "chapter_key": "physics_9_ch7",     // optional; pin to a specific chapter
+  "user_id": "anon-abc123",          // optional; defaults to "anonymous"
+  "conversation_id": "uuid-here",    // optional; enables multi-turn context
+  "history": [                        // optional; explicit prior turns,
+    {"role": "user", "content": "..."},  //   overrides conversation_id fetch
+    {"role": "assistant", "content": "..."}
+  ]
 }
 ```
+
+The query is first run through a `gpt-4o-mini` refiner that translates
+any language (English, Hinglish, Hindi, etc.) to clean English for
+dense retrieval, and tags the source language. The answer is then
+generated in the same language the student used.
 
 **Response**: `text/event-stream` with these event types:
 
 ```
+data: {"type": "status",   "message": "Looking in Class 8 Science, Ch 4: Electricity…"}
+data: {"type": "status",   "message": "Finding the most relevant sections…"}
+data: {"type": "status",   "message": "Reading through and writing your answer…"}
 data: {"type": "token",     "content": "Newton's second law states..."}
 data: {"type": "token",     "content": " that the net force..."}
 ...
 data: {"type": "diagrams",  "data": [{"url": "https://...", "caption": "Fig 9.3"}]}
-data: {"type": "sources",   "data": [{"chapter_key": "physics_9_ch10", "preview": "F = ma..."}]}
+data: {"type": "sources",   "data": [{"chapter_key": "physics_9_ch7", "preview": "F = ma..."}]}
 data: {"type": "done"}
+```
+
+### `GET /history`
+
+Two modes:
+- `?mode=messages` (default) — returns up to `limit` chat rows.
+  Add `&conversation_id=X` to restrict to one thread.
+- `?mode=conversations` — returns one row per thread with
+  `first_query`, `last_message_at`, `message_count`. This is
+  what the frontend history sidebar uses.
+
+### `GET /chapters`
+
+Returns the list of available NCERT chapters, optionally filtered
+by `class_level` and `subject`. The frontend uses this to populate
+the chapter dropdown.
+
+```json
+[
+  {"chapter_key": "physics_8_ch4", "display_name": "Electricity: Magnetic and Heating Effects", "class_level": "8", "subject": "physics", "chapter_number": 4},
+  ...
+]
 ```
 
 ### `GET /health`
@@ -491,7 +530,7 @@ data: {"type": "done"}
     "openai": "ok",
     "pinecone": "ok",
     "supabase": "ok",
-    "redis": "ok"            // or "skipped" if REDIS_URL is empty
+    "redis": "ok"            // or "degraded" if REDIS_URL is unreachable
   }
 }
 ```
@@ -675,14 +714,18 @@ After streaming completes, the backend:
 ### Streaming pipeline (end-to-end)
 
 ```
-Browser  ──fetch()──▶  FastAPI  ──parallel──▶  classifier (gpt-4o-mini)
-                              ──parallel──▶  embed query (text-embedding-3-small)
+Browser  ──fetch()──▶  FastAPI  ──sse──▶  status: "Thinking about your question…"
+                              ──refine──▶  refiner (gpt-4o-mini JSON mode)
+                                          Translates Hinglish/Hindi → English
+                                          Tags source language for the answer
+                              ──embed──▶  embed refined query (text-embedding-3-small)
+                              ──parallel──▶  fetch conversation history (if conversation_id set)
+                              ──parallel──▶  dense Pinecone query across all matching namespaces
                               ──sse──▶  status: "Looking in Class 8 Science, Ch 4…"
-                              ──sse──▶  retriever (Pinecone + BM25, RRF)
                               ──sse──▶  status: "Finding the most relevant sections…"
                               ──sse──▶  reranker (optional, Cohere)
                               ──sse──▶  status: "Reading through and writing your answer…"
-                              ──sse──▶  generator (streams tokens)
+                              ──sse──▶  generator (streams tokens in source language)
                               ──sse──▶  diagram + sources events
                               ──sse──▶  done
 ```
@@ -806,7 +849,7 @@ And to switch: `DEV_MODE=false` in `.env`. No code changes needed.
   seam where a `gpt-4o` (or similar) vision call can be inserted
   without changing the rest of the pipeline.
 - **BM25 corpus is in-memory.** A re-deploy of the backend rebuilds
-  the BM25 index for every namespace on first use. For 22 chapters
+  the BM25 index for every namespace on first use. For 39 chapters
   this is fine, but if chapters get much larger, swap to a persistent
   sparse index (e.g. Pinecone's `sparse-dense` indexes).
 - **No streaming cancellation.** If the browser closes the connection
@@ -814,12 +857,12 @@ And to switch: `DEV_MODE=false` in `.env`. No code changes needed.
   A future improvement: hook `request.is_disconnected()` into the
   generator's loop. (The frontend has a Stop button, but it only
   works before the LLM call starts.)
-- **No multi-turn memory.** The /ask endpoint is stateless apart from
-  the chat-history record. A follow-up question ("can you explain
-  step 2?") gets no context from the previous turn.
 - **Auth is email-only by default.** Google OAuth works once you
-  configure it in the Supabase dashboard, but the frontend hides the
-  Google button until then.
+  configure it in the Supabase dashboard (and once you do, the
+  Google sign-in button appears automatically — the frontend
+  probes on load). The provider-toggle env var
+  `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED=false` hides the button without
+  a redeploy.
 - **Single-region.** Pinecone is on `us-east-1`. Indian students will
   see ~200ms additional network latency. Can switch region if needed.
 - **CORS is wide-open in dev.** Tighten before production.
@@ -827,29 +870,52 @@ And to switch: `DEV_MODE=false` in `.env`. No code changes needed.
   volume-mounted into the backend container by default, so the
   `--upload-diagrams` ingest mode requires running the script
   outside the container (against the live Supabase + Pinecone).
+- **Embedding cache is in Redis only (24h TTL).** First query
+  in a session pays ~600ms for the OpenAI embed call. Warm
+  queries are ~2ms. Without Redis, we fall back to fresh
+  embeds every time.
+- **Pinecone serverless cold start.** The first query after a
+  long idle period (hours) takes 5-10s. Subsequent queries
+  are ~400ms. Fix when you go to prod: cron a `curl /health`
+  every 5 min to keep the index warm, or switch to a pod-based
+  Pinecone index (~$70/mo minimum).
+- **History depth is fixed at 6 turns.** Controlled by
+  `HISTORY_TURN_LIMIT` in `backend/config/constants.py`.
+  Each turn costs ~200 prompt tokens, so 6 turns = ~1.2k tokens
+  of history. Up to 20 turns is reasonable; beyond that, the
+  context gets noisy and latency climbs.
+- **Classifier is currently disabled.** We removed the
+  gpt-4o-mini classifier call (was the slowest part — 1.5-3s)
+  because the dense retriever with embedding cache + parallel
+  cross-namespace search is fast enough. The classifier code
+  is still in `backend/rag/classifier.py` and can be re-enabled
+  by uncommenting the call in `api/routes/query.py` if retrieval
+  quality needs the extra precision.
 
 ---
 
 ## 14. Roadmap
 
-**All 9 build steps done.** MVP is feature-complete for the
-core RAG loop. Future work is below.
+**All build steps + UX polish done.** MVP is feature-complete for
+the core RAG loop, multi-turn conversation, multilingual support,
+and numerical problem solving. Future work is below.
 
 - [x] **Step 1**: `requirements.txt` + `package.json`
-- [x] **Step 2**: `backend/config/constants.py` (NAMESPACE_MAP + prompts)
+- [x] **Step 2**: `backend/config/constants.py` (NAMESPACE_MAP + prompts, 39 chapters)
 - [x] **Step 3**: `backend/config/settings.py` (OpenAI gpt-4o-mini)
 - [x] **Step 4**: `backend/services/` (5 client wrappers)
-- [x] **Step 5**: `backend/rag/` (classifier, retriever, reranker, generator with status SSE events)
-- [x] **Step 6**: `backend/api/routes/` (query SSE, history, health)
+- [x] **Step 5**: `backend/rag/` (refiner + dense retriever + reranker + generator with status SSE events)
+- [x] **Step 6**: `backend/api/routes/` (query SSE, history, health, chapters)
 - [x] **Step 7**: `backend/ingestion/` (parser, chunker, diagram processor, embedder, pipeline with incremental upsert)
 - [x] **Step 8**: `frontend/` (Next.js 14, hooks, components, store, pages, Supabase Auth)
-- [x] **Step 9**: `docker-compose.yml` + `scripts/` (ingest_chapter.py, ingest_all.py) + `Dockerfile` (backend + frontend) + README polish
+- [x] **Step 8b**: UX polish (history sidebar, new-chat button, chapter filter, empty-state copy)
+- [x] **Step 9**: `docker-compose.yml` + `scripts/` (ingest_chapter.py, ingest_all.py, migrate_supabase.py) + `Dockerfile` (backend + frontend) + README polish
 
 ### Future (after step 9)
 
-- [ ] **Vision implementation** — `gpt-4o` vision calls in `diagram_processor.py` (~$0.15-0.25 for full 22-chapter ingest, see §11 for cost analysis)
-- [ ] **Multi-turn conversations** — `conversation_id` + recent history prepended to the prompt
-- [ ] **User auth** — Supabase Auth (email magic link ✅ done, Google OAuth is a 10-min setup)
+- [ ] **Vision implementation** — `gpt-4o` vision calls in `diagram_processor.py` (~$0.20-0.30 for full 39-chapter ingest, see §11 for cost analysis)
+- [x] **Multi-turn conversations** — `conversation_id` + recent history prepended to the prompt (done in step 8b)
+- [x] **User auth** — Supabase Auth (email magic link + Google OAuth both done)
 - [ ] **Streaming cancellation** — `request.is_disconnected()` plumbing
 - [ ] **Persistent sparse index** — Pinecone sparse-dense, or Qdrant
 - [ ] **Evaluation harness** — RAGAS or custom metrics on a held-out NCERT QA set

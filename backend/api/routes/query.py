@@ -30,7 +30,7 @@ from typing import AsyncIterator
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from config.constants import NAMESPACE_MAP
+from config.constants import NAMESPACE_MAP, HISTORY_TURN_LIMIT, MAX_HISTORY_TURN_CHARS
 from config.settings import get_settings
 from models.request_models import AskRequest
 from services import redis_service
@@ -182,12 +182,19 @@ async def _stream_pipeline(
     # env var). We synthesize the classification from the user's
     # pre-filter (if any), or use None which makes the retriever
     # search all 39 namespaces in parallel.
+    #
+    # chapter_key takes precedence: when the user pins a specific
+    # chapter (from the history tab or chapter filter), the retriever
+    # searches ONLY that namespace — fastest possible path.
+    chapter_meta = None
+    if request.chapter_key and request.chapter_key in NAMESPACE_MAP:
+        chapter_meta = NAMESPACE_MAP[request.chapter_key]
     classification = Classification(
-        subject=request.subject,
-        class_level=request.class_level,
-        chapter_key=None,  # always 'no specific chapter' — let the retriever fan out
+        subject=request.subject or (chapter_meta["subject"] if chapter_meta else None),
+        class_level=request.class_level or (chapter_meta["class_level"] if chapter_meta else None),
+        chapter_key=request.chapter_key,
         confidence=1.0,
-        chapter_meta=None,
+        chapter_meta=chapter_meta,
     )
 
     # Drain any statuses fired during the above
@@ -248,7 +255,8 @@ async def _stream_pipeline(
             history = await get_conversation_history(
                 user_id=user_id,
                 conversation_id=request.conversation_id,
-                limit=6,
+                limit=HISTORY_TURN_LIMIT,
+                max_chars_per_turn=MAX_HISTORY_TURN_CHARS,
             )
         except Exception as e:
             logger.warning("get_conversation_history failed: %s", e)
@@ -412,7 +420,8 @@ async def _stream_pipeline(
             history = await get_conversation_history(
                 user_id=user_id,
                 conversation_id=request.conversation_id,
-                limit=6,
+                limit=HISTORY_TURN_LIMIT,
+                max_chars_per_turn=MAX_HISTORY_TURN_CHARS,
             )
         except Exception as e:
             logger.warning("get_conversation_history failed: %s", e)
@@ -527,7 +536,7 @@ async def _persist_and_cache(
             "conversation_id": request.conversation_id,
             "class_level": request.class_level or (classification.class_level if classification else None),
             "subject": request.subject or (classification.subject if classification else None),
-            "chapter_key": classification.chapter_key if classification else None,
+            "chapter_key": (request.chapter_key or (classification.chapter_key if classification else None)),
             "query": request.query,
             "answer": full_answer,
             "sources": sources_for_db,

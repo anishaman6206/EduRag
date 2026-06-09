@@ -245,3 +245,20 @@ RETRIEVAL_TOP_K = 6                 # final chunks the LLM sees (empirical sweet
 RERANK_TOP_K = 6                     # final chunks after rerank (when enabled)
 RRF_DENSE_WEIGHT = 0.7              # alpha in RRF
 RRF_SPARSE_WEIGHT = 0.3             # 1 - alpha
+
+# Multi-turn conversation history depth. The /ask route fetches
+# this many prior turns from Supabase and prepends them to the
+# generator prompt. Each turn = 1 user msg + 1 assistant msg.
+#
+# Cost/latency tradeoff (rough):
+#   limit=3  -> ~600 prompt tokens of history, +50ms latency
+#   limit=6  -> ~1200 prompt tokens, +100ms latency  (default)
+#   limit=10 -> ~2000 prompt tokens, +200ms latency, +$0.001/ask
+#   limit=20 -> ~4000 prompt tokens, +400ms latency
+HISTORY_TURN_LIMIT = 6
+
+# Max characters per history turn sent to the LLM. Long assistant
+# answers are truncated to keep the prompt small. Each turn is
+# ~200-300 tokens so 1500 chars (~400 tokens) per turn is enough
+# for the LLM to keep context without blowing the budget.
+MAX_HISTORY_TURN_CHARS = 1500
