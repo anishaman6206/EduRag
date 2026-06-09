@@ -24,95 +24,70 @@ class ChapterMeta(TypedDict):
 
 
 NAMESPACE_MAP: dict[str, ChapterMeta] = {
+    # ─────────────────────────────────────────
+    # NOTE: This map only contains chapters for which we have actual
+    # NCERT PDFs in pdfs/Data/. Each chapter_key is `{subject}_{class}_chN`
+    # and matches the chapter number in the corresponding PDF file.
+    #
+    # File → chapter mapping (see pdfs/Data/):
+    #   8th Science/hecu1NN.pdf  → 8th class chapters
+    #   9th Science/iesc1NN.pdf  → 9th class chapters
+    #   10th Science/jesc1NN.pdf → 10th class chapters
+    #
+    # Skip rules during ingestion:
+    #   *1ps*   → preliminary section (cover/foreword/contents)
+    #   *1an*   → printed answer key
+    # ─────────────────────────────────────────
 
     # ─────────────────────────────────────────
-    # MATHEMATICS
+    # CLASS 8  (hecu1NN.pdf — integrated Science, PCM chapters)
     # ─────────────────────────────────────────
-    # CLASS 7 MATHEMATICS
-    "math_7_ch1":  {"namespace": "math_7_ch1_integers",                    "display_name": "Integers",                            "class_level": "7", "subject": "math", "chapter_number": 1},
-    "math_7_ch2":  {"namespace": "math_7_ch2_fractions_and_decimals",      "display_name": "Fractions and Decimals",              "class_level": "7", "subject": "math", "chapter_number": 2},
-    "math_7_ch3":  {"namespace": "math_7_ch3_data_handling",               "display_name": "Data Handling",                       "class_level": "7", "subject": "math", "chapter_number": 3},
-    "math_7_ch4":  {"namespace": "math_7_ch4_simple_equations",            "display_name": "Simple Equations",                    "class_level": "7", "subject": "math", "chapter_number": 4},
-    "math_7_ch5":  {"namespace": "math_7_ch5_lines_and_angles",            "display_name": "Lines and Angles",                    "class_level": "7", "subject": "math", "chapter_number": 5},
-    "math_7_ch6":  {"namespace": "math_7_ch6_triangle_and_properties",     "display_name": "The Triangle and its Properties",     "class_level": "7", "subject": "math", "chapter_number": 6},
-    "math_7_ch7":  {"namespace": "math_7_ch7_comparing_quantities",        "display_name": "Comparing Quantities",                "class_level": "7", "subject": "math", "chapter_number": 7},
-    "math_7_ch8":  {"namespace": "math_7_ch8_rational_numbers",            "display_name": "Rational Numbers",                    "class_level": "7", "subject": "math", "chapter_number": 8},
-    "math_7_ch9":  {"namespace": "math_7_ch9_perimeter_and_area",          "display_name": "Perimeter and Area",                  "class_level": "7", "subject": "math", "chapter_number": 9},
-    "math_7_ch10": {"namespace": "math_7_ch10_algebraic_expressions",      "display_name": "Algebraic Expressions",               "class_level": "7", "subject": "math", "chapter_number": 10},
-    "math_7_ch11": {"namespace": "math_7_ch11_exponents_and_powers",       "display_name": "Exponents and Powers",                "class_level": "7", "subject": "math", "chapter_number": 11},
-    "math_7_ch12": {"namespace": "math_7_ch12_symmetry",                   "display_name": "Symmetry",                            "class_level": "7", "subject": "math", "chapter_number": 12},
-    "math_7_ch13": {"namespace": "math_7_ch13_visualising_solid_shapes",   "display_name": "Visualising Solid Shapes",            "class_level": "7", "subject": "math", "chapter_number": 13},
-
-    # CLASS 8 MATHEMATICS
-    "math_8_ch1":  {"namespace": "math_8_ch1_rational_numbers",                     "display_name": "Rational Numbers",                        "class_level": "8", "subject": "math", "chapter_number": 1},
-    "math_8_ch2":  {"namespace": "math_8_ch2_linear_equations_one_variable",        "display_name": "Linear Equations in One Variable",        "class_level": "8", "subject": "math", "chapter_number": 2},
-    "math_8_ch3":  {"namespace": "math_8_ch3_understanding_quadrilaterals",         "display_name": "Understanding Quadrilaterals",             "class_level": "8", "subject": "math", "chapter_number": 3},
-    "math_8_ch4":  {"namespace": "math_8_ch4_data_handling",                        "display_name": "Data Handling",                           "class_level": "8", "subject": "math", "chapter_number": 4},
-    "math_8_ch5":  {"namespace": "math_8_ch5_squares_and_square_roots",             "display_name": "Squares and Square Roots",                "class_level": "8", "subject": "math", "chapter_number": 5},
-    "math_8_ch6":  {"namespace": "math_8_ch6_cubes_and_cube_roots",                 "display_name": "Cubes and Cube Roots",                    "class_level": "8", "subject": "math", "chapter_number": 6},
-    "math_8_ch7":  {"namespace": "math_8_ch7_comparing_quantities",                 "display_name": "Comparing Quantities",                    "class_level": "8", "subject": "math", "chapter_number": 7},
-    "math_8_ch8":  {"namespace": "math_8_ch8_algebraic_expressions_and_identities", "display_name": "Algebraic Expressions and Identities",    "class_level": "8", "subject": "math", "chapter_number": 8},
-    "math_8_ch9":  {"namespace": "math_8_ch9_mensuration",                          "display_name": "Mensuration",                             "class_level": "8", "subject": "math", "chapter_number": 9},
-    "math_8_ch10": {"namespace": "math_8_ch10_exponents_and_powers",                "display_name": "Exponents and Powers",                    "class_level": "8", "subject": "math", "chapter_number": 10},
-    "math_8_ch11": {"namespace": "math_8_ch11_direct_and_inverse_proportions",      "display_name": "Direct and Inverse Proportions",          "class_level": "8", "subject": "math", "chapter_number": 11},
-    "math_8_ch12": {"namespace": "math_8_ch12_factorisation",                       "display_name": "Factorisation",                           "class_level": "8", "subject": "math", "chapter_number": 12},
-    "math_8_ch13": {"namespace": "math_8_ch13_introduction_to_graphs",              "display_name": "Introduction to Graphs",                  "class_level": "8", "subject": "math", "chapter_number": 13},
-
-    # CLASS 9 MATHEMATICS (Ganita Manjari)
-    "math_9_ch1":  {"namespace": "math_9_ch1_coordinate_geometry",   "display_name": "Orienting Yourself: The Use of Coordinates",          "class_level": "9", "subject": "math", "chapter_number": 1},
-    "math_9_ch2":  {"namespace": "math_9_ch2_linear_polynomials",    "display_name": "Introduction to Linear Polynomials",                  "class_level": "9", "subject": "math", "chapter_number": 2},
-    "math_9_ch3":  {"namespace": "math_9_ch3_number_systems",        "display_name": "The World of Numbers",                               "class_level": "9", "subject": "math", "chapter_number": 3},
-    "math_9_ch4":  {"namespace": "math_9_ch4_algebraic_identities",  "display_name": "Exploring Algebraic Identities",                      "class_level": "9", "subject": "math", "chapter_number": 4},
-    "math_9_ch5":  {"namespace": "math_9_ch5_linear_equations",      "display_name": "Linear Equations",                                   "class_level": "9", "subject": "math", "chapter_number": 5},
-    "math_9_ch6":  {"namespace": "math_9_ch6_perimeter_and_area",    "display_name": "Measuring Space: Perimeter and Area",                 "class_level": "9", "subject": "math", "chapter_number": 6},
-    "math_9_ch7":  {"namespace": "math_9_ch7_probability",           "display_name": "The Mathematics of Maybe: Introduction to Probability", "class_level": "9", "subject": "math", "chapter_number": 7},
-    "math_9_ch8":  {"namespace": "math_9_ch8_sequences",             "display_name": "Predicting What Comes Next: Exploring Sequences",     "class_level": "9", "subject": "math", "chapter_number": 8},
-
-    # ─────────────────────────────────────────
-    # PHYSICS (extracted from unified Science textbook)
-    # ─────────────────────────────────────────
-    # CLASS 7 PHYSICS
-    "physics_7_ch3":  {"namespace": "physics_7_ch3_electricity_circuits",        "display_name": "Electricity: Circuits and their Components", "class_level": "7", "subject": "physics", "chapter_number": 3},
-    "physics_7_ch7":  {"namespace": "physics_7_ch7_heat_transfer",               "display_name": "Heat Transfer in Nature",                    "class_level": "7", "subject": "physics", "chapter_number": 7},
-    "physics_7_ch8":  {"namespace": "physics_7_ch8_measurement_time_motion",     "display_name": "Measurement of Time and Motion",             "class_level": "7", "subject": "physics", "chapter_number": 8},
-    "physics_7_ch11": {"namespace": "physics_7_ch11_light_shadows_reflections",  "display_name": "Light: Shadows and Reflections",             "class_level": "7", "subject": "physics", "chapter_number": 11},
-
     # CLASS 8 PHYSICS
     "physics_8_ch4":  {"namespace": "physics_8_ch4_electricity_magnetic_heating", "display_name": "Electricity: Magnetic and Heating Effects", "class_level": "8", "subject": "physics", "chapter_number": 4},
     "physics_8_ch5":  {"namespace": "physics_8_ch5_exploring_forces",            "display_name": "Exploring Forces",                         "class_level": "8", "subject": "physics", "chapter_number": 5},
     "physics_8_ch6":  {"namespace": "physics_8_ch6_pressure_winds_storms",       "display_name": "Pressure, Winds, Storms, and Cyclones",     "class_level": "8", "subject": "physics", "chapter_number": 6},
     "physics_8_ch10": {"namespace": "physics_8_ch10_light_mirrors_lenses",       "display_name": "Light: Mirrors and Lenses",                 "class_level": "8", "subject": "physics", "chapter_number": 10},
 
-    # CLASS 9 PHYSICS
-    "physics_9_ch9":  {"namespace": "physics_9_ch9_motion",                    "display_name": "Motion",                            "class_level": "9", "subject": "physics", "chapter_number": 9},
-    "physics_9_ch10": {"namespace": "physics_9_ch10_force_and_laws_of_motion", "display_name": "Force and Laws of Motion",          "class_level": "9", "subject": "physics", "chapter_number": 10},
-    "physics_9_ch11": {"namespace": "physics_9_ch11_work_energy_machines",     "display_name": "Work, Energy and Simple Machines",  "class_level": "9", "subject": "physics", "chapter_number": 11},
-    "physics_9_ch12": {"namespace": "physics_9_ch12_sound",                    "display_name": "Sound",                             "class_level": "9", "subject": "physics", "chapter_number": 12},
-
-    # ─────────────────────────────────────────
-    # CHEMISTRY (extracted from unified Science textbook)
-    # ─────────────────────────────────────────
-    # CLASS 7 CHEMISTRY
-    "chemistry_7_ch2": {"namespace": "chemistry_7_ch2_acidic_basic_neutral",      "display_name": "Exploring Substances: Acidic, Basic, and Neutral", "class_level": "7", "subject": "chemistry", "chapter_number": 2},
-    "chemistry_7_ch4": {"namespace": "chemistry_7_ch4_metals_and_nonmetals",      "display_name": "The World of Metals and Non-metals",               "class_level": "7", "subject": "chemistry", "chapter_number": 4},
-    "chemistry_7_ch5": {"namespace": "chemistry_7_ch5_physical_chemical_changes", "display_name": "Changes Around Us: Physical and Chemical",         "class_level": "7", "subject": "chemistry", "chapter_number": 5},
-
     # CLASS 8 CHEMISTRY
     "chemistry_8_ch7": {"namespace": "chemistry_8_ch7_particulate_nature_matter",          "display_name": "Particulate Nature of Matter",                         "class_level": "8", "subject": "chemistry", "chapter_number": 7},
     "chemistry_8_ch8": {"namespace": "chemistry_8_ch8_elements_compounds_mixtures",        "display_name": "Nature of Matter: Elements, Compounds, and Mixtures",  "class_level": "8", "subject": "chemistry", "chapter_number": 8},
     "chemistry_8_ch9": {"namespace": "chemistry_8_ch9_solutes_solvents_solutions",         "display_name": "The Amazing World of Solutes, Solvents, and Solutions", "class_level": "8", "subject": "chemistry", "chapter_number": 9},
 
+    # ─────────────────────────────────────────
+    # CLASS 9  (iesc1NN.pdf — integrated Science, PCM chapters)
+    # ─────────────────────────────────────────
+    # CLASS 9 PHYSICS
+    "physics_9_ch4":  {"namespace": "physics_9_ch4_motion",            "display_name": "Describing Motion Around Us",                "class_level": "9", "subject": "physics", "chapter_number": 4},
+    "physics_9_ch6":  {"namespace": "physics_9_ch6_force_and_motion",  "display_name": "How Forces Affect Motion",                   "class_level": "9", "subject": "physics", "chapter_number": 6},
+    "physics_9_ch7":  {"namespace": "physics_9_ch7_work_energy",       "display_name": "Work, Energy and Simple Machines",           "class_level": "9", "subject": "physics", "chapter_number": 7},
+    "physics_9_ch10": {"namespace": "physics_9_ch10_sound_waves",      "display_name": "Sound Waves: Characteristics and Applications","class_level": "9", "subject": "physics", "chapter_number": 10},
+
     # CLASS 9 CHEMISTRY
-    "chemistry_9_ch5": {"namespace": "chemistry_9_ch5_mixtures_and_separation", "display_name": "Exploring Mixtures and Their Separation", "class_level": "9", "subject": "chemistry", "chapter_number": 5},
-    "chemistry_9_ch6": {"namespace": "chemistry_9_ch6_structure_of_atom",       "display_name": "Structure of an Atom",                   "class_level": "9", "subject": "chemistry", "chapter_number": 6},
-    "chemistry_9_ch7": {"namespace": "chemistry_9_ch7_atoms_and_molecules",     "display_name": "Atoms and Molecules",                    "class_level": "9", "subject": "chemistry", "chapter_number": 7},
+    "chemistry_9_ch5": {"namespace": "chemistry_9_ch5_mixtures_and_separation",  "display_name": "Exploring Mixtures and their Separation",  "class_level": "9", "subject": "chemistry", "chapter_number": 5},
+    "chemistry_9_ch8": {"namespace": "chemistry_9_ch8_journey_inside_atom",      "display_name": "Journey Inside the Atom",                  "class_level": "9", "subject": "chemistry", "chapter_number": 8},
+    "chemistry_9_ch9": {"namespace": "chemistry_9_ch9_atomic_foundations",      "display_name": "Atomic Foundations of Matter",             "class_level": "9", "subject": "chemistry", "chapter_number": 9},
+
+    # ─────────────────────────────────────────
+    # CLASS 10  (jesc1NN.pdf — integrated Science, PCM chapters)
+    # ─────────────────────────────────────────
+    # CLASS 10 CHEMISTRY
+    "chemistry_10_ch1": {"namespace": "chemistry_10_ch1_chemical_reactions",         "display_name": "Chemical Reactions and Equations", "class_level": "10", "subject": "chemistry", "chapter_number": 1},
+    "chemistry_10_ch2": {"namespace": "chemistry_10_ch2_acids_bases_salts",          "display_name": "Acids, Bases and Salts",          "class_level": "10", "subject": "chemistry", "chapter_number": 2},
+    "chemistry_10_ch3": {"namespace": "chemistry_10_ch3_metals_and_nonmetals",      "display_name": "Metals and Non-metals",           "class_level": "10", "subject": "chemistry", "chapter_number": 3},
+    "chemistry_10_ch4": {"namespace": "chemistry_10_ch4_carbon_compounds",          "display_name": "Carbon and its Compounds",        "class_level": "10", "subject": "chemistry", "chapter_number": 4},
+
+    # CLASS 10 PHYSICS
+    "physics_10_ch9":  {"namespace": "physics_10_ch9_light_refraction",     "display_name": "Light – Reflection and Refraction", "class_level": "10", "subject": "physics", "chapter_number": 9},
+    "physics_10_ch10": {"namespace": "physics_10_ch10_human_eye",           "display_name": "The Human Eye and the Colourful World", "class_level": "10", "subject": "physics", "chapter_number": 10},
+    "physics_10_ch11": {"namespace": "physics_10_ch11_electricity",         "display_name": "Electricity",                      "class_level": "10", "subject": "physics", "chapter_number": 11},
+    "physics_10_ch12": {"namespace": "physics_10_ch12_magnetic_effects",    "display_name": "Magnetic Effects of Electric Current", "class_level": "10", "subject": "physics", "chapter_number": 12},
 }
 
 
 # Derived helpers — keep these in sync with NAMESPACE_MAP.
 ALL_CHAPTER_KEYS: list[str] = sorted(NAMESPACE_MAP.keys())
-ALL_SUBJECTS: list[str] = ["math", "physics", "chemistry"]
-ALL_CLASSES: list[str] = ["7", "8", "9"]
+ALL_SUBJECTS: list[str] = ["physics", "chemistry"]  # math not in current data
+ALL_CLASSES: list[str] = ["8", "9", "10"]            # no Class 7 in current data
 
 
 def get_chapter_meta(chapter_key: str) -> ChapterMeta:
