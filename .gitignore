@@ -235,3 +235,18 @@ pdfs/
 data/
 *.pdf
 !backend/**/*.pdf   # tests/docs may include small PDFs
+
+# Node / Next.js build artifacts
+node_modules/
+.next/
+out/
+next-env.d.ts
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Local env files
+.env
+.env.local
+.env.*.local
+!backend/.env.example
+!frontend/.env.local.example
