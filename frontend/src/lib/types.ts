@@ -7,7 +7,7 @@
 // Domain types
 // ─────────────────────────────────────────────────────────────────────────
 export type Subject = "math" | "physics" | "chemistry" | "biology";
-export type ClassLevel = "7" | "8" | "9" | "10";
+export type ClassLevel = "8" | "9" | "10";
 
 export interface Chapter {
   key: string;            // e.g. "physics_8_ch4"

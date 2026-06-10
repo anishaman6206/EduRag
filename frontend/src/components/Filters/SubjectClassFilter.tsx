@@ -29,7 +29,6 @@ export function SubjectClassFilter({ classLevel, subject, onChange, disabled }: 
         className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
       >
         <option value="">Any class</option>
-        <option value="7">Class 7</option>
         <option value="8">Class 8</option>
         <option value="9">Class 9</option>
         <option value="10">Class 10</option>

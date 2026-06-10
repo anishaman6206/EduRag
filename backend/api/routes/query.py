@@ -131,6 +131,17 @@ async def _stream_pipeline(
     thinking = thinking_message(request.query)
     yield f"data: {json.dumps({'type': 'status', 'message': thinking})}\n\n"
 
+    # Latency instrumentation — emit a 'timing' event right after
+    # the first status so the frontend can render a phase timer
+    # if it wants. We emit one at the end of every phase so the
+    # client can show a per-stage breakdown.
+    import time as _t
+    _t0 = _t.monotonic()
+    _phase_log: list[tuple[str, float]] = []
+
+    def _stamp(phase: str, t0: float) -> None:
+        _phase_log.append((phase, _t.monotonic() - t0))
+
     # ── Cache check (keyed on the ORIGINAL query, not the refined one —
     # this way a Hinglish question and its English paraphrase hit the
     # same cache entry when the user repeats themselves)
@@ -149,18 +160,28 @@ async def _stream_pipeline(
             return
     except Exception as e:
         logger.warning("Cache get failed (proceeding without cache): %s", e)
+    _stamp("cache_check", _t0)
 
     # ── Phase 1: Refine query.
     # Translate the (possibly Hinglish/Hindi) query into clean English
     # so the dense retriever can match it against the English NCERT
     # corpus. Also tag the source language so the answer prompt can
     # reply in the same register.
+    #
+    # NOTE: this must be SEQUENTIAL before the embed. If we embedded
+    # the original (Hinglish) query in parallel, the resulting
+    # vector would not match the English NCERT corpus well. The
+    # user is right that this adds latency, but the latency is
+    # already being absorbed in the "Thinking about your question…"
+    # status event the user sees.
+    _t_refine = _t.monotonic()
     from services.openai_service import get_embedding as _get_embedding
     try:
         refined = await refine_query(request.query)
     except Exception as e:
         logger.warning("Refiner failed (using original query): %s", e)
         refined = None
+    _stamp("refine", _t_refine)
 
     search_query = refined.english if refined else request.query
     source_language = refined.original_language if refined else "english"
@@ -168,6 +189,7 @@ async def _stream_pipeline(
     # ── Phase 2: Embed the REFINED (English) query for dense search.
     # The retriever's own _get_embedding_cached handles per-query
     # caching, so we just call it via the public path.
+    _t_embed = _t.monotonic()
     try:
         query_vector = await _get_embedding(search_query)
     except Exception as e:
@@ -176,6 +198,7 @@ async def _stream_pipeline(
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         set_status_emitter(None)
         return
+    _stamp("embed", _t_embed)
 
     # ── Phase 3: Build a synthetic Classification.
     # The classifier is currently DISABLED (gated by DISABLE_CLASSIFIER
@@ -211,6 +234,7 @@ async def _stream_pipeline(
     # Larger top_k (12, 20) made the LLM spend more tokens on less
     # relevant context; smaller (3) starved it. 6 is the magic
     # middle. Hard cap MAX_RESULT_K=6 in the retriever.
+    _t_retrieve = _t.monotonic()
     try:
         chunks = await hybrid_retriever.retrieve(
             request.query,
@@ -224,6 +248,7 @@ async def _stream_pipeline(
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         set_status_emitter(None)
         return
+    _stamp("retrieve", _t_retrieve)
 
     # ── Phase: rerank (optional)
     s = get_settings()
@@ -246,6 +271,7 @@ async def _stream_pipeline(
         return
 
     # ── Phase: fetch multi-turn history (if conversation_id set)
+    _t_history = _t.monotonic()
     history: list[dict[str, str]] = []
     if request.history:
         # Client supplied the history directly. Trust it.
@@ -260,8 +286,10 @@ async def _stream_pipeline(
             )
         except Exception as e:
             logger.warning("get_conversation_history failed: %s", e)
+    _stamp("history", _t_history)
 
     # ── Phase: generate (streams tokens)
+    _t_generate = _t.monotonic()
     full_answer_parts: list[str] = []
     final_diagrams: list[dict] = []
     final_sources: list[dict] = []
@@ -304,6 +332,7 @@ async def _stream_pipeline(
         return
 
     set_status_emitter(None)
+    _stamp("generate_stream", _t_generate)
     logger.info(
         "/ask: query=%r → %d tokens, %d diagrams, %d sources, %.2fs",
         request.query[:60],
@@ -311,6 +340,11 @@ async def _stream_pipeline(
         len(final_diagrams), len(final_sources),
         time.monotonic() - t0,
     )
+
+    # Emit the final per-phase timing event for the latency dashboard.
+    yield f"data: {json.dumps({'type': 'timing', 'phases': {p: round(d * 1000, 1) for p, d in _phase_log}, 'total_ms': round((_t.monotonic() - _t0) * 1000, 1)})}\n\n"
+
+
 
     # ── Cache + persist (background — don't block the response close)
     full_answer = "".join(full_answer_parts)

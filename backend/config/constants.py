@@ -18,8 +18,8 @@ from typing import TypedDict
 class ChapterMeta(TypedDict):
     namespace: str          # Pinecone namespace name
     display_name: str       # Human-readable chapter title
-    class_level: str        # "7" | "8" | "9"
-    subject: str            # "math" | "physics" | "chemistry"
+    class_level: str        # "8" | "9" | "10"
+    subject: str            # "math" | "physics" | "chemistry" | "biology"
     chapter_number: int     # 1-indexed chapter number within that book
 
 

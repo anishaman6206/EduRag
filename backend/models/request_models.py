@@ -34,7 +34,7 @@ class AskRequest(BaseModel):
         max_length=2000,
         description="The student's free-form question.",
     )
-    class_level: Optional[Literal["7", "8", "9", "10"]] = Field(
+    class_level: Optional[Literal["8", "9", "10"]] = Field(
         default=None,
         description="Pre-filter by class. If omitted, the dense retriever "
                     "fans out across all 39 namespaces.",

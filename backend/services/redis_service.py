@@ -24,6 +24,14 @@ _redis: aioredis.Redis | None = None
 # Tiny in-memory fallback (per-process) used only if Redis is down.
 _mem_fallback: dict[str, str] = {}
 
+# Latch: once Redis fails to connect, mark it down for the rest of
+# the process lifetime. Without this, every cache_get() pays the
+# full TCP timeout (~2-3s for getaddrinfo) on every request —
+# eating a huge fraction of our perceived latency. With
+# docker-compose this is fine; in dev without docker we skip the
+# network call entirely.
+_redis_known_down: bool = False
+
 
 def get_redis() -> aioredis.Redis:
     """Lazy-init the async Redis client."""
@@ -37,6 +45,21 @@ def get_redis() -> aioredis.Redis:
         )
         logger.info("Redis client initialized (url=%s)", s.redis_url)
     return _redis
+    return _redis
+
+
+def redis_is_known_down() -> bool:
+    """True if we have already discovered Redis is unreachable
+    in this process. Once True, the cache_* helpers skip the
+    network call entirely and go straight to the in-memory
+    fallback (or None)."""
+    return _redis_known_down
+
+
+def mark_redis_down() -> None:
+    """Latch Redis as unreachable. Idempotent."""
+    global _redis_known_down
+    _redis_known_down = True
 
 
 def make_cache_key(query: str, class_level: str, subject: str | None) -> str:
@@ -50,33 +73,49 @@ def make_cache_key(query: str, class_level: str, subject: str | None) -> str:
 
 
 async def cache_get(key: str) -> dict[str, Any] | None:
-    """Return a cached dict, or None on miss / Redis failure."""
-    try:
-        raw = await get_redis().get(key)
-        if raw:
-            return json.loads(raw)
-    except Exception as e:
-        logger.warning("Redis GET failed for %s: %s — using memory fallback", key, e)
-        raw = _mem_fallback.get(key)
-        if raw:
-            return json.loads(raw)
+    """Return a cached dict, or None on miss / Redis failure.
+
+    Fast-path: if we've already discovered Redis is unreachable in
+    this process, skip the network call entirely (saves 2-3s of
+    TCP-timeout per call when Redis is down).
+    """
+    if not redis_is_known_down():
+        try:
+            raw = await get_redis().get(key)
+            if raw:
+                return json.loads(raw)
+        except Exception as e:
+            logger.warning("Redis GET failed for %s: %s — switching to in-memory fallback", key, e)
+            mark_redis_down()
+
+    # Either Redis is down, or it was up and we missed
+    raw = _mem_fallback.get(key)
+    if raw:
+        return json.loads(raw)
     return None
 
 
 async def cache_set(key: str, value: dict[str, Any], ttl_seconds: int = 3600) -> None:
     """Cache a dict under `key` with a TTL (seconds)."""
     payload = json.dumps(value, default=str)
-    try:
-        await get_redis().setex(key, ttl_seconds, payload)
-    except Exception as e:
-        logger.warning("Redis SETEX failed for %s: %s — using memory fallback", key, e)
-        _mem_fallback[key] = payload
+    if not redis_is_known_down():
+        try:
+            await get_redis().setex(key, ttl_seconds, payload)
+            return
+        except Exception as e:
+            logger.warning("Redis SETEX failed for %s: %s — switching to in-memory fallback", key, e)
+            mark_redis_down()
+    # Either Redis is down, or it just went down. Fall back.
+    _mem_fallback[key] = payload
 
 
 async def cache_delete(key: str) -> None:
     """Invalidate a key. Used when a chat message gets re-saved."""
-    try:
-        await get_redis().delete(key)
-    except Exception as e:
-        logger.warning("Redis DEL failed for %s: %s", key, e)
-        _mem_fallback.pop(key, None)
+    if not redis_is_known_down():
+        try:
+            await get_redis().delete(key)
+            return
+        except Exception as e:
+            logger.warning("Redis DEL failed for %s: %s", key, e)
+            mark_redis_down()
+    _mem_fallback.pop(key, None)

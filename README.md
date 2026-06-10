@@ -1,6 +1,6 @@
 # EduRag
 
-> Production-grade RAG-based doubt-solving web app for **Class 7, 8, and 9 PCM**
+> Production-grade RAG-based doubt-solving web app for **Class 8, 9, and 10 PCB** (Physics, Chemistry, Biology)
 > (Physics, Chemistry, Mathematics) students. Answers are grounded in
 > NCERT textbook chapters, with diagrams and LaTeX rendered inline.
 
@@ -27,7 +27,7 @@
 
 ## 1. What is EduRag?
 
-EduRag is a web app where a Class 7-9 PCM student can ask a question
+EduRag is a web app where a Class 8-10 PCB student can ask a question
 ("What is Newton's second law?") and receive:
 
 - A **step-by-step, LaTeX-rendered answer** appropriate for their grade level
