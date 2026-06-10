@@ -139,10 +139,22 @@ export function ChatWindow() {
   }, [store.messages, store.status]);
 
   function handleSubmit(text: string) {
+    // Read the conversation_id directly from localStorage here,
+    // not from React state. The state is initialized in a
+    // useEffect which runs after the first render — meaning the
+    // very first message the user sends would otherwise be sent
+    // with conversation_id="". The /ask route would still process
+    // it (no error) but Supabase would save the row with
+    // conversation_id=NULL, which the history sidebar then can't
+    // display.
+    const cid = typeof window !== "undefined"
+      ? (window.localStorage.getItem("edurag:conversation_id") || getOrCreateConversationId())
+      : conversationId;
     sendQuery(text, {
       class_level: classLevel || undefined,
       subject: subject === "all" ? undefined : (subject || undefined),
       chapter_key: chapterKey || undefined,
+      conversation_id: cid,
     });
     // Refresh conversations after a moment so the new thread shows
     // up in the sidebar.
