@@ -281,6 +281,14 @@ class HybridRetriever:
                 continue
             for m in lst:
                 chunk = _match_to_chunk(m)
+                # Diagrams are stripped from retrieval until vision
+                # is wired up — they bloat the per-namespace top_k
+                # budget without contributing text the generator
+                # can use (the generator is text-only and the
+                # diagrams come through the separate SSE `diagrams`
+                # event anyway). To re-enable, delete this branch.
+                if chunk.content_type == "diagram":
+                    continue
                 if chunk.score < RELEVANCE_FLOOR:
                     continue
                 if not chunk.text:

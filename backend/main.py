@@ -43,19 +43,33 @@ app = FastAPI(
 
 # ─────────────────────────────────────────────────────────────────────────
 # CORS
-# Wide-open in dev (frontend on a different port). Tighten for prod.
+# Origins are env-driven. Defaults are safe for local dev (localhost
+# frontend on a different port). For production, set
+# CORS_ALLOWED_ORIGINS to the exact frontend domain(s) — never leave
+# it as "*" because we use allow_credentials=True (cookies / auth
+# headers), and browsers reject the combination of wildcard +
+# credentials.
+#
+# Example prod value:
+#   CORS_ALLOWED_ORIGINS=https://edurag.vercel.app,https://edurag.com
 # ─────────────────────────────────────────────────────────────────────────
-ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000",
-).split(",")
+ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",") if o.strip()
+]
+
+# Allow all methods/headers only when running locally. In production,
+# we narrow to exactly what /ask, /history, /chapters, /health need.
+IS_PROD = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip() != ""
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in ALLOWED_ORIGINS if o.strip()],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
     expose_headers=["Content-Type"],
 )
 

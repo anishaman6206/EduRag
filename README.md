@@ -865,7 +865,10 @@ And to switch: `DEV_MODE=false` in `.env`. No code changes needed.
   a redeploy.
 - **Single-region.** Pinecone is on `us-east-1`. Indian students will
   see ~200ms additional network latency. Can switch region if needed.
-- **CORS is wide-open in dev.** Tighten before production.
+- **CORS is env-driven** via `CORS_ALLOWED_ORIGINS` (comma-separated).
+  Defaults to `localhost` only. In production, set to your exact
+  frontend domain (e.g. `https://edurag.vercel.app`). Never use `*`
+  — we send auth headers, which the browser rejects with a wildcard.
 - **No diagrams-storage pre-upload.** The `pdfs/` directory isn't
   volume-mounted into the backend container by default, so the
   `--upload-diagrams` ingest mode requires running the script
@@ -916,14 +919,150 @@ and numerical problem solving. Future work is below.
 - [ ] **Vision implementation** — `gpt-4o` vision calls in `diagram_processor.py` (~$0.20-0.30 for full 39-chapter ingest, see §11 for cost analysis)
 - [x] **Multi-turn conversations** — `conversation_id` + recent history prepended to the prompt (done in step 8b)
 - [x] **User auth** — Supabase Auth (email magic link + Google OAuth both done)
+- [x] **Per-user rate limiting** — Redis-backed sliding window on `/ask` (`backend/services/rate_limit_service.py`); turnstile still pending
 - [ ] **Streaming cancellation** — `request.is_disconnected()` plumbing
 - [ ] **Persistent sparse index** — Pinecone sparse-dense, or Qdrant
 - [ ] **Evaluation harness** — RAGAS or custom metrics on a held-out NCERT QA set
 - [ ] **Hindi + regional language support** — translation layer before generation
 - [ ] **Mobile-responsive UI** — Tailwind breakpoints, KaTeX sizing
-- [ ] **Rate limiting + abuse prevention** — per-user_id quota, Cloudflare Turnstile
 - [ ] **Skip the classifier when pre-filter is set** — saves another 1.5-3s on warm path (currently the biggest remaining fixed cost)
 - [ ] **Observability** — OpenTelemetry traces, structured logs to a dashboard
+
+---
+
+## 15. Production deployment checklist
+
+This is the runbook to take EduRag from "works locally" to "ready
+for real students." Each item links to the section that explains it.
+
+### Before you deploy
+
+- [ ] **API keys are fresh.** Generate new ones for every provider
+      immediately after your last dev session. Anything pasted into
+      a chat transcript is visible to whoever has access to that
+      transcript. See §15.1.
+- [ ] **Pinecone index exists.** Create it in the dashboard (name =
+      `edurag`, 1536 dim, cosine, serverless us-east-1) before the
+      backend first boots.
+- [ ] **Supabase project is provisioned.** Run
+      `scripts/migrate_supabase.py` to create the `chat_messages` and
+      `parent_chunks` tables. Create a public `diagrams` bucket if
+      you plan to use `--upload-diagrams`.
+- [ ] **All NCERT chapters are ingested.** `docker-compose exec
+      backend python scripts/ingest_all.py` against your live
+      Pinecone. Re-ingest is idempotent; running twice is safe.
+
+### Configure backend env
+
+- [ ] `CORS_ALLOWED_ORIGINS` set to your real frontend domain(s).
+      Comma-separated. No wildcards.
+- [ ] `REDIS_URL` points at your hosted Redis (Upstash, Render
+      Redis, etc.) — not `localhost`.
+- [ ] `ASK_RATE_LIMIT_PER_MINUTE` set (default 30). Set to `0` only
+      for load testing.
+- [ ] `DEV_MODE=false` once you've upgraded `_PROD_MODELS` in
+      `settings.py` to use `gpt-4o` (or whatever you prefer).
+      Currently a no-op since dev and prod use the same models.
+
+### Deploy
+
+- [ ] **Backend** on Railway / Render / Fly.io — Dockerfile is
+      auto-detected. Set the env vars above. Expose port 8000.
+      Healthcheck path: `/health`.
+- [ ] **Frontend** on Vercel — root = `frontend/`, build = default.
+      Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+      and `BACKEND_URL` (pointing at the backend's public URL).
+- [ ] **Redis** on Upstash (free tier fine) — copy the `rediss://...`
+      URL into the backend's `REDIS_URL`.
+- [ ] **Custom domain + HTTPS** on Vercel. See §15.4.
+
+### After deploy
+
+- [ ] **`curl https://<backend-url>/health`** returns
+      `{"status":"ok"}` with all four sub-checks green.
+- [ ] **Cron `/health` every 5 minutes** to keep the Pinecone index
+      warm. See §15.2.
+- [ ] **End-to-end smoke test**: sign in via the magic link, ask a
+      real question, watch the SSE stream in DevTools → Network.
+- [ ] **Verify rate limiting** by hammering `/ask` from a script and
+      confirming a 429 comes back after 30 requests in a minute.
+
+### 15.1 Rotating API keys
+
+After any dev session that touched `.env`, assume every key in it
+has leaked to your transcripts. Rotate immediately:
+
+| Provider | Where to rotate | What to grab |
+|---|---|---|
+| OpenAI | platform.openai.com → API keys → Revoke + Create | `OPENAI_API_KEY` (starts `sk-…`) |
+| Pinecone | console.pinecone.io → API Keys → Regenerate | `PINECONE_API_KEY` (starts `pcsk-…`) |
+| Supabase | Project Settings → API → Roll service-role key | `SUPABASE_SERVICE_KEY` + `SUPABASE_URL` |
+| Cohere | dashboard.cohere.com → API Keys → Roll | `COHERE_API_KEY` |
+
+Then update each platform's env vars (Vercel project settings,
+Railway service vars, `docker-compose.yml` for any local repro).
+Do **not** re-use the old keys for staging or a side project.
+
+### 15.2 Keeping Pinecone warm
+
+Serverless Pinecone indexes go cold after a few hours of inactivity.
+The first query after a cold start takes 5-10s; subsequent queries
+are ~400ms.
+
+Cheapest fix: hit `/health` (which queries Pinecone for index stats)
+every 5 minutes. Any cron scheduler works. Example using
+[UptimeRobot](https://uptimerobot.com/) (free, 5-min interval):
+
+- Add a new monitor → HTTP(s)
+- URL: `https://<your-backend-url>/health`
+- Interval: 5 minutes
+- Expected status: 200
+
+Alternatives:
+- `cron-job.org` (free, more flexible intervals)
+- A GitHub Actions cron that `curl`s the URL
+- Switch to a Pinecone pod-based index (~$70/mo, no cold start)
+
+### 15.3 Backup strategy
+
+| Store | What's in it | Backup mechanism |
+|---|---|---|
+| **Pinecone** | All chunk embeddings + metadata | **Reproducible.** Keep `pdfs/Data/` in version control. To restore, re-run `scripts/ingest_all.py`. Cost: ~$0.05 in OpenAI embeddings for the full 55-chapter re-ingest. |
+| **Supabase DB** | `chat_messages`, `parent_chunks`, user accounts | Free tier has no automatic backup. Pro plan ($25/mo) gets daily point-in-time recovery (7 days). Or run `supabase db dump` on a cron. |
+| **Supabase Storage** | Diagram images uploaded by `--upload-diagrams` | Pro plan includes backup. Free tier has no SLA. Mirror to S3/R2 if these matter. |
+| **Redis** | 1h `/ask` answer cache | **Don't back up.** Cache is ephemeral — losing it just means a brief warm-up period. |
+
+Test your restore path before you need it. Re-running `ingest_all.py`
+against a fresh Pinecone index is the canary.
+
+### 15.4 Custom domain on Vercel
+
+Free on all Vercel plans.
+
+1. Buy the domain (Namecheap, Cloudflare Registrar, Google Domains).
+2. Vercel → Project → Settings → Domains → Add.
+3. Vercel shows the DNS records to add. For an apex domain
+   (`edurag.com`):
+   - `A` record → `76.76.21.21`
+   For a subdomain (`app.edurag.com`):
+   - `CNAME` → `cname.vercel-dns.com`
+4. Add the records at your registrar. Propagation: 5 min – 24 h.
+5. Vercel auto-issues a Let's Encrypt cert once DNS resolves.
+6. Update `CORS_ALLOWED_ORIGINS` on the backend to include the new
+   domain and redeploy.
+
+### 15.5 Known remaining TODOs
+
+These are listed again here so they're visible during deploy planning:
+
+- **Streaming cancellation.** The Stop button only works before the
+  LLM call starts. Plumbing `request.is_disconnected()` into the
+  generator is a half-day task.
+- **Persistent sparse index.** BM25 is rebuilt in-memory on first
+  use after each redeploy. Fine at current scale; revisit if the
+  corpus grows past ~100 chapters.
+- **Observability.** Currently log-based. OpenTelemetry traces would
+  make per-phase latency visible without log scraping.
 
 ---
 

@@ -35,6 +35,7 @@ from config.settings import get_settings
 from models.request_models import AskRequest
 from services import redis_service
 from services.supabase_service import save_chat_message, get_conversation_history
+from services.rate_limit_service import enforce_rate_limit
 
 from rag.classifier import classify_query, Classification
 from rag.retriever import hybrid_retriever
@@ -219,6 +220,22 @@ async def _stream_pipeline(
         confidence=1.0,
         chapter_meta=chapter_meta,
     )
+
+    # Guard: if the user hasn't pinned anything (no chapter_key, no
+    # class_level, no subject), the retriever would fan out to ALL
+    # namespaces in NAMESPACE_MAP — ~70 parallel Pinecone calls,
+    # which takes 30+ seconds on a cold index. Default to Class 9
+    # Physics when nothing is set: it's our largest indexed subject,
+    # the most common student demographic, and matches the frontend
+    # empty-state copy. Users can override via the dropdowns.
+    if not classification.chapter_key and not classification.subject and not classification.class_level:
+        classification = Classification(
+            subject="physics",
+            class_level="9",
+            chapter_key=None,
+            confidence=0.0,
+            chapter_meta=None,
+        )
 
     # Drain any statuses fired during the above
     for s in await _drain_status():
@@ -591,6 +608,11 @@ async def ask(request: Request, body: AskRequest) -> StreamingResponse:
     reader (see useStream.ts) and dispatches events by type.
     """
     user_id = body.user_id or "anonymous"
+
+    # Rate-limit per user (or per IP for anonymous). Raises 429 on
+    # abuse. Fail-open if Redis is down — better to serve an abuser
+    # than to lock out the classroom because Redis hiccuped.
+    await enforce_rate_limit(request, user_id)
 
     # Note: we do NOT use FastAPI's dependency-injection validation
     # for streaming; we just call the generator.

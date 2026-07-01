@@ -11,7 +11,10 @@ import type {
   HistoryItem,
 } from "./types";
 
-const API_BASE = "/api/backend";
+const API_BASE =
+  typeof window !== "undefined"
+    ? `http://${window.location.hostname}:8000`
+    : "/api/backend";
 
 /**
  * Send a question to /ask and return an async iterator of SSE events.
