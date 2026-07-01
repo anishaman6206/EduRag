@@ -26,10 +26,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the source
 COPY . .
 
-# uvicorn listens on 8000 by default
+# uvicorn listens on 8000 by default. Railway injects a dynamic
+# $PORT, so we read it (defaulting to 8000 for local docker-compose).
 EXPOSE 8000
 
 # Single worker is fine for the dev workflow. For prod scale,
 # use gunicorn + uvicorn workers or run multiple replicas behind
 # a load balancer.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
