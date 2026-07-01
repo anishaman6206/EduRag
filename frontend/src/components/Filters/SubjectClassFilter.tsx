@@ -45,6 +45,7 @@ export function SubjectClassFilter({ classLevel, subject, onChange, disabled }: 
         <option value="physics">Physics</option>
         <option value="chemistry">Chemistry</option>
         <option value="biology">Biology</option>
+        <option value="math">Math</option>
       </select>
     </div>
   );

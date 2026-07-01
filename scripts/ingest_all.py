@@ -60,27 +60,75 @@ SKIP_PATTERNS = ["1ps", "1an", "200ans"]
 
 def resolve_pdf_path(pdf_dir: Path, chapter_key: str) -> Path | None:
     """
-    Look for a PDF file matching this chapter_key. Returns None
-    if not found. The file pattern is {bookcode}1{NN}.pdf where
-    bookcode is per-class and NN is the chapter number zero-padded.
+    Look for a PDF file matching this chapter_key.
 
-    Example: physics_8_ch4 → /pdfs/Data/8th Science/hecu104.pdf
+    Two patterns supported:
+      Science: {class}th Science/{bookcode}1{NN}.pdf
+        e.g. physics_8_ch4 -> /pdfs/Data/8th Science/hecu104.pdf
+      Math: {class}th Math/<loose-name-with-chapter-number>.pdf
+        e.g. math_8_ch1 -> /pdfs/Data/8th Math/<file containing 'ch 1' or 'chapter 1'>
+
+    For math we can't rely on a fixed filename, so we scan the math
+    folder for the first PDF whose name contains a token matching
+    the chapter number (skipping the class number).
     """
     meta = NAMESPACE_MAP[chapter_key]
     class_level = meta["class_level"]
     chapter_num = meta["chapter_number"]
-    bookcode = BOOKCODES.get(class_level)
-    if not bookcode:
-        return None
+    subject = meta["subject"]
 
-    book_dir = pdf_dir / f"{class_level}th Science"
+    # Pick the right subfolder
+    if subject == "math":
+        book_dir = pdf_dir / f"{class_level}th Math"
+    else:
+        book_dir = pdf_dir / f"{class_level}th Science"
+
     if not book_dir.exists():
         return None
 
-    # Zero-pad the chapter number to 2 digits
-    filename = f"{bookcode}1{chapter_num:02d}.pdf"
-    candidate = book_dir / filename
-    return candidate if candidate.exists() else None
+    # Science: fixed pattern
+    if subject != "math":
+        bookcode = BOOKCODES.get(class_level)
+        if not bookcode:
+            return None
+        filename = f"{bookcode}1{chapter_num:02d}.pdf"
+        candidate = book_dir / filename
+        return candidate if candidate.exists() else None
+
+    # Math: scan the folder for a PDF whose name encodes the chapter
+    # number. We look for any number 1..15 in the filename, exclude
+    # the class number (8/9/10), and pick the highest match as the
+    # chapter (since files are usually numbered high-to-low in suffixes).
+    for f in sorted(book_dir.iterdir()):
+        if not f.name.lower().endswith(".pdf"):
+            continue
+        if "ncert-books-for-class" in f.name.lower():
+            continue
+        # Extract candidate chapter numbers. We need to identify
+        # which number in the filename is the chapter vs. incidental
+        # (e.g. the class number 8/9/10, or page numbers in titles).
+        # The chapter number typically appears in one of these forms:
+        #   "Class N ch K", "Class N chapter K", "C{N} K", "N.title"
+        # So we look for the number right after 'ch' / 'chapter' /
+        # the standalone class prefix.
+        chapter_in_name = None
+        # "ch K" or "chapter K"
+        m = re.search(r"\bch(?:apter)?\.?\s*(\d+)\b", f.name, re.IGNORECASE)
+        if m:
+            chapter_in_name = int(m.group(1))
+        else:
+            # "C{N} K" or "Class N K" — first number after the class marker
+            m = re.search(r"(?:C\d+|Class\s*\d+)\s+(\d+)\b", f.name, re.IGNORECASE)
+            if m:
+                chapter_in_name = int(m.group(1))
+            else:
+                # Last-resort: any number 1..15 in the filename
+                nums = [int(x.group(1)) for x in re.finditer(r"(\d+)", f.name)]
+                nums = [n for n in nums if 1 <= n <= 15 and n != int(class_level)]
+                chapter_in_name = max(nums) if nums else None
+        if chapter_in_name == chapter_num:
+            return f
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────

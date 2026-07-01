@@ -250,3 +250,7 @@ tsconfig.tsbuildinfo
 .env.*.local
 !backend/.env.example
 !frontend/.env.local.example
+
+# Stray nested git repos (in case someone runs the CLI in a
+# subfolder that happens to look like a project root).
+EduRag/

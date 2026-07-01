@@ -106,12 +106,51 @@ NAMESPACE_MAP: dict[str, ChapterMeta] = {
     "physics_10_ch10": {"namespace": "physics_10_ch10_human_eye",           "display_name": "The Human Eye and the Colourful World", "class_level": "10", "subject": "physics", "chapter_number": 10},
     "physics_10_ch11": {"namespace": "physics_10_ch11_electricity",         "display_name": "Electricity",                      "class_level": "10", "subject": "physics", "chapter_number": 11},
     "physics_10_ch12": {"namespace": "physics_10_ch12_magnetic_effects",    "display_name": "Magnetic Effects of Electric Current", "class_level": "10", "subject": "physics", "chapter_number": 12},
+
+    # ─────────────────────────────────────────────────────────────────
+    # CLASS 8 MATHEMATICS
+    # ─────────────────────────────────────────────────────────────────
+    "math_8_ch1":  {"namespace": "math_8_ch1_square_and_cube",      "display_name": "A Square and a Cube",            "class_level": "8", "subject": "math", "chapter_number": 1},
+    "math_8_ch2":  {"namespace": "math_8_ch2_power_play",          "display_name": "Power Play",                     "class_level": "8", "subject": "math", "chapter_number": 2},
+    "math_8_ch3":  {"namespace": "math_8_ch3_story_of_numbers",    "display_name": "A Story of Numbers",             "class_level": "8", "subject": "math", "chapter_number": 3},
+    "math_8_ch4":  {"namespace": "math_8_ch4_quadrilateral",       "display_name": "Quadrilaterals",                 "class_level": "8", "subject": "math", "chapter_number": 4},
+    "math_8_ch5":  {"namespace": "math_8_ch5_number_play",        "display_name": "Number Play",                    "class_level": "8", "subject": "math", "chapter_number": 5},
+    "math_8_ch6":  {"namespace": "math_8_ch6_distribute_multiply","display_name": "We Distribute, Yet Things Multiply","class_level": "8", "subject": "math", "chapter_number": 6},
+    "math_8_ch7":  {"namespace": "math_8_ch7_proportional",       "display_name": "Proportional Reasoning 1",       "class_level": "8", "subject": "math", "chapter_number": 7},
+
+    # CLASS 9 MATHEMATICS
+    "math_9_ch1":  {"namespace": "math_9_ch1_number_system",        "display_name": "Number Systems",                "class_level": "9", "subject": "math", "chapter_number": 1},
+    "math_9_ch2":  {"namespace": "math_9_ch2_polynomials",         "display_name": "Polynomials",                   "class_level": "9", "subject": "math", "chapter_number": 2},
+    "math_9_ch3":  {"namespace": "math_9_ch3_coordinate_geometry", "display_name": "Coordinate Geometry",            "class_level": "9", "subject": "math", "chapter_number": 3},
+    "math_9_ch4":  {"namespace": "math_9_ch4_linear_equations",    "display_name": "Linear Equations in Two Variables","class_level": "9", "subject": "math", "chapter_number": 4},
+    "math_9_ch5":  {"namespace": "math_9_ch5_euclid_geometry",    "display_name": "Introduction to Euclid's Geometry","class_level": "9", "subject": "math", "chapter_number": 5},
+    "math_9_ch6":  {"namespace": "math_9_ch6_lines_angles",         "display_name": "Lines and Angles",               "class_level": "9", "subject": "math", "chapter_number": 6},
+    "math_9_ch8":  {"namespace": "math_9_ch8_quadrilaterals",      "display_name": "Quadrilaterals",                 "class_level": "9", "subject": "math", "chapter_number": 8},
+    "math_9_ch9":  {"namespace": "math_9_ch9_circles",             "display_name": "Circles",                        "class_level": "9", "subject": "math", "chapter_number": 9},
+    "math_9_ch10": {"namespace": "math_9_ch10_herons_formula",     "display_name": "Heron's Formula",                "class_level": "9", "subject": "math", "chapter_number": 10},
+    "math_9_ch11": {"namespace": "math_9_ch11_surface_volume",    "display_name": "Surface Areas and Volumes",      "class_level": "9", "subject": "math", "chapter_number": 11},
+    "math_9_ch12": {"namespace": "math_9_ch12_statistics",        "display_name": "Statistics",                     "class_level": "9", "subject": "math", "chapter_number": 12},
+
+    # CLASS 10 MATHEMATICS
+    "math_10_ch1":  {"namespace": "math_10_ch1_real_numbers",        "display_name": "Real Numbers",                  "class_level": "10", "subject": "math", "chapter_number": 1},
+    "math_10_ch2":  {"namespace": "math_10_ch2_polynomials",         "display_name": "Polynomials",                   "class_level": "10", "subject": "math", "chapter_number": 2},
+    "math_10_ch3":  {"namespace": "math_10_ch3_linear_equations",    "display_name": "Linear Equations in Two Variables","class_level": "10", "subject": "math", "chapter_number": 3},
+    "math_10_ch4":  {"namespace": "math_10_ch4_quadratic",           "display_name": "Quadratic Equations",           "class_level": "10", "subject": "math", "chapter_number": 4},
+    "math_10_ch5":  {"namespace": "math_10_ch5_ap",                  "display_name": "Arithmetic Progressions",        "class_level": "10", "subject": "math", "chapter_number": 5},
+    "math_10_ch6":  {"namespace": "math_10_ch6_triangles",           "display_name": "Triangles",                      "class_level": "10", "subject": "math", "chapter_number": 6},
+    "math_10_ch7":  {"namespace": "math_10_ch7_coordinate_geometry", "display_name": "Coordinate Geometry",            "class_level": "10", "subject": "math", "chapter_number": 7},
+    "math_10_ch8":  {"namespace": "math_10_ch8_trigonometry",        "display_name": "Trigonometry",                   "class_level": "10", "subject": "math", "chapter_number": 8},
+    "math_10_ch9":  {"namespace": "math_10_ch9_circles",             "display_name": "Circles",                        "class_level": "10", "subject": "math", "chapter_number": 9},
+    "math_10_ch10": {"namespace": "math_10_ch10_area_circle",        "display_name": "Areas Related to Circles",       "class_level": "10", "subject": "math", "chapter_number": 10},
+    "math_10_ch11": {"namespace": "math_10_ch11_surface_volume",    "display_name": "Surface Areas and Volumes",      "class_level": "10", "subject": "math", "chapter_number": 11},
+    "math_10_ch12": {"namespace": "math_10_ch12_statistics",        "display_name": "Statistics",                     "class_level": "10", "subject": "math", "chapter_number": 12},
+    "math_10_ch13": {"namespace": "math_10_ch13_probability",       "display_name": "Probability",                    "class_level": "10", "subject": "math", "chapter_number": 13},
 }
 
 
 # Derived helpers — keep these in sync with NAMESPACE_MAP.
 ALL_CHAPTER_KEYS: list[str] = sorted(NAMESPACE_MAP.keys())
-ALL_SUBJECTS: list[str] = ["physics", "chemistry", "biology"]
+ALL_SUBJECTS: list[str] = ["physics", "chemistry", "biology", "math"]
 ALL_CLASSES: list[str] = ["8", "9", "10"]
 
 
@@ -176,7 +215,7 @@ Student Question: {user_query}
 # ANSWER_GENERATOR_PROMPT — system prompt for the final answer
 # ─────────────────────────────────────────────────────────────────────────
 ANSWER_GENERATOR_PROMPT = """You are EduBot, a friendly and expert tutor for Class 8, 9, and 10 students
-studying Physics, Chemistry, and Biology.
+studying Physics, Chemistry, Biology, and Mathematics.
 
 You are answering a Class {class_level} {subject} question about: {chapter_name}
 
@@ -202,6 +241,38 @@ Rules for your answer:
 4. If a diagram is relevant, say "Refer to the diagram below" — diagrams will be attached separately by the system.
 5. End with a one-line summary of the key concept used.
 6. If the question is outside the available textbook scope, politely say so.
+
+=== DIAGRAM GENERATION (for math, geometry, graphs) ===
+For math questions that need a figure, emit a Mermaid diagram in
+a ```mermaid fenced code block. Mermaid is rendered client-side
+as SVG. Use it whenever a textual description would be unclear
+or when the textbook would show a figure.
+
+When to emit a ```mermaid block:
+- Geometry problems (triangles, circles, angles, parallel lines)
+- Coordinate geometry (plot a function or a system of points)
+- Constructions (perpendicular bisector, angle bisector, etc.)
+- Venn diagrams, set relationships
+- Any time the textbook figure is essential to understanding
+
+Available Mermaid diagram types (use one as the first line):
+- flowchart, graph (for general graphs), sequenceDiagram
+- classDiagram, stateDiagram, erDiagram
+- journey, gantt, pie, quadrant, requirement
+- gitGraph
+
+Example (right triangle with sides labeled):
+```mermaid
+graph LR
+  A((A)) ---|"3"| B((B))
+  A ---|"4"| C((C))
+  B ---|"5"| D((D))
+  C --- D
+  style A fill:#fef3c7
+```
+
+Keep mermaid code small and focused. The client renders it
+client-side as SVG, so a huge block will be slow.
 
 Context from textbook (use this as your primary source of truth — it IS English,
 translate the relevant parts as you answer):
