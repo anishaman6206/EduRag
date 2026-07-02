@@ -20,13 +20,13 @@ interface Props {
 
 export function SubjectClassFilter({ classLevel, subject, onChange, disabled }: Props) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1">
       <select
         aria-label="Class"
         value={classLevel}
         onChange={(e) => onChange({ classLevel: e.target.value as ClassLevel | "", subject })}
         disabled={disabled}
-        className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
+        className="text-xs sm:text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
       >
         <option value="">Any class</option>
         <option value="8">Class 8</option>
@@ -39,7 +39,7 @@ export function SubjectClassFilter({ classLevel, subject, onChange, disabled }: 
         value={subject}
         onChange={(e) => onChange({ classLevel, subject: e.target.value as Subject | "" | "all" })}
         disabled={disabled}
-        className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
+        className="text-xs sm:text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
       >
         <option value="all">All subjects</option>
         <option value="physics">Physics</option>

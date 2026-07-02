@@ -208,28 +208,37 @@ export function ChatWindow() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar — hidden on small screens unless toggled */}
+    <div className="flex h-screen bg-gray-50 flex-col lg:flex-row">
+      {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
-        <HistorySidebar
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          onSelect={loadConversation}
-          onNew={startNewConversation}
-          onClose={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
+      
+      {/* Sidebar — hidden on mobile unless toggled */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-72 transition-transform lg:static lg:translate-x-0 ${
+        sidebarOpen ? "translate-x-0" : "-translate-x-full"
+      }`}>
+        {sidebarOpen && (
+          <HistorySidebar
+            conversations={conversations}
+            activeConversationId={activeConversationId}
+            onSelect={loadConversation}
+            onNew={startNewConversation}
+            onClose={() => setSidebarOpen(false)}
+          />
+        )}
+      </div>
 
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 bg-white">
-          <div className="flex items-center gap-2 min-w-0">
+        <header className="flex items-center justify-between gap-1 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-200 bg-white sticky top-0 z-30">
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
             <button
               onClick={() => setSidebarOpen((v) => !v)}
               aria-label="Toggle history"
-              className="p-1.5 rounded-md hover:bg-gray-100 text-gray-600"
+              className="p-1.5 rounded-md hover:bg-gray-100 text-gray-600 lg:hidden flex-shrink-0"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="3" y1="6" x2="21" y2="6" />
                 <line x1="3" y1="12" x2="21" y2="12" />
                 <line x1="3" y1="18" x2="21" y2="18" />
@@ -237,7 +246,7 @@ export function ChatWindow() {
             </button>
             <button
               onClick={startNewConversation}
-              className="px-2 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1"
+              className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1 flex-shrink-0"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -245,28 +254,30 @@ export function ChatWindow() {
               </svg>
               <span className="hidden sm:inline">New chat</span>
             </button>
-            <Link href="/" className="ml-2 text-lg font-bold text-gray-900">
+            <Link href="/" className="text-base sm:text-lg font-bold text-gray-900 truncate">
               EduRag
             </Link>
             <span className="text-xs text-gray-400 hidden sm:inline">NCERT doubt solver</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <SubjectClassFilter
-              classLevel={classLevel}
-              subject={subject}
-              onChange={(next) => {
-                setClassLevel(next.classLevel);
-                setSubject(next.subject);
-              }}
-              disabled={isStreaming}
-            />
+          <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
+            <div className="hidden sm:flex gap-1">
+              <SubjectClassFilter
+                classLevel={classLevel}
+                subject={subject}
+                onChange={(next) => {
+                  setClassLevel(next.classLevel);
+                  setSubject(next.subject);
+                }}
+                disabled={isStreaming}
+              />
+            </div>
             <select
               aria-label="Chapter"
               value={chapterKey}
               onChange={(e) => setChapterKey(e.target.value)}
               disabled={isStreaming || chapters.length === 0}
-              className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 max-w-[180px] truncate"
+              className="text-xs sm:text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 max-w-[100px] sm:max-w-[180px] truncate"
               title={chapters.find((c) => c.chapter_key === chapterKey)?.display_name ?? ""}
             >
               <option value="">All chapters</option>
@@ -279,14 +290,14 @@ export function ChatWindow() {
             {auth.user ? (
               <button
                 onClick={() => auth.signOut()}
-                className="text-sm text-gray-600 hover:text-gray-900"
+                className="text-xs sm:text-sm text-gray-600 hover:text-gray-900 px-1 sm:px-2"
               >
                 Sign out
               </button>
             ) : (
               <Link
                 href="/login"
-                className="text-sm px-3 py-1.5 bg-brand-600 text-white rounded-md hover:bg-brand-700"
+                className="text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 bg-brand-600 text-white rounded-md hover:bg-brand-700 whitespace-nowrap"
               >
                 Sign in
               </Link>
@@ -295,13 +306,13 @@ export function ChatWindow() {
         </header>
 
         {/* Messages */}
-        <main className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+        <main className="flex-1 overflow-y-auto px-2 sm:px-4 py-4 sm:py-6 space-y-3 sm:space-y-4">
           {store.messages.length === 0 && <EmptyState />}
           {store.messages.map((m) => (
             <MessageBubble key={m.id} message={m} />
           ))}
           {store.error && (
-            <div className="max-w-3xl mx-auto rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+            <div className="max-w-2xl sm:max-w-3xl mx-auto rounded-lg bg-red-50 border border-red-200 p-2.5 sm:p-3 text-xs sm:text-sm text-red-700 w-full">
               {store.error}
             </div>
           )}
@@ -309,8 +320,8 @@ export function ChatWindow() {
         </main>
 
         {/* Input bar */}
-        <footer className="border-t border-gray-200 bg-white px-4 py-3">
-          <div className="max-w-3xl mx-auto flex items-end gap-2">
+        <footer className="border-t border-gray-200 bg-white px-2 sm:px-4 py-2.5 sm:py-3 sticky bottom-0">
+          <div className="max-w-2xl sm:max-w-3xl mx-auto flex items-end gap-1.5 sm:gap-2">
             <div className="flex-1">
               <QueryInput
                 onSubmit={handleSubmit}
@@ -321,7 +332,7 @@ export function ChatWindow() {
             {isStreaming && (
               <button
                 onClick={cancel}
-                className="px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex-shrink-0 whitespace-nowrap"
               >
                 Stop
               </button>
@@ -335,24 +346,22 @@ export function ChatWindow() {
 
 function EmptyState() {
   return (
-    <div className="max-w-2xl mx-auto text-center pt-16">
-      <div className="text-5xl mb-4">📚</div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">
+    <div className="max-w-xl sm:max-w-2xl mx-auto text-center pt-8 sm:pt-16 px-3">
+      <div className="text-4xl sm:text-5xl mb-3 sm:mb-4">📚</div>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1.5 sm:mb-2">
         Ask a doubt from your NCERT textbook
       </h1>
-      <p className="text-sm text-gray-500 mb-6">
-        I'm your friendly tutor, grounded in Class 8 NCERT science.
-        I'll cite the exact chapter and page number, and pull in diagrams from your book.
-        Try asking in English, Hinglish, or Hindi — I understand all three!
+      <p className="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-6 leading-relaxed">
+        I'm your friendly tutor, grounded in Class 8 NCERT science. I'll cite the exact chapter and page number, and pull in diagrams from your book.
       </p>
-      <div className="text-xs text-brand-700 bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 mb-6 inline-block">
-        💡 <strong>Tip:</strong> Pick a chapter from the dropdown above first — answers come back ~10× faster when I know exactly where to look.
+      <div className="text-xs text-brand-700 bg-brand-50 border border-brand-200 rounded-lg px-2.5 sm:px-3 py-2 mb-4 sm:mb-6 inline-block">
+        💡 <strong>Tip:</strong> Pick a chapter first for faster answers.
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
         {SAMPLE_PROMPTS.map((p) => (
           <div
             key={p}
-            className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-600"
+            className="px-2.5 sm:px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs sm:text-sm text-gray-600 line-clamp-2"
           >
             "{p}"
           </div>
