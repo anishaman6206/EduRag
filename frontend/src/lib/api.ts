@@ -1,7 +1,7 @@
 /**
  * Typed API client. All calls go through the Next.js rewrite
- * /api/backend/* → http://localhost:8000/*, so the browser never
- * has to deal with CORS preflights.
+ * /api/backend/* so the browser never has to call the backend
+ * origin directly or deal with CORS preflights.
  */
 
 import type {
@@ -11,10 +11,7 @@ import type {
   HistoryItem,
 } from "./types";
 
-const API_BASE =
-  typeof window !== "undefined"
-    ? `http://${window.location.hostname}:8000`
-    : "/api/backend";
+const API_BASE = "/api/backend";
 
 /**
  * Send a question to /ask and return an async iterator of SSE events.
